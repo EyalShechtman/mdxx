@@ -1,0 +1,253 @@
+# Q4 2025 Revenue Report ~title
+
+## Executive Summary ~summary
+
+Revenue grew 23% year-over-year, driven primarily by enterprise
+expansion. Our [cloud platform]{~highlight} continues to be the
+primary growth driver. ~p-intro
+
+![Revenue chart](revenue-q4.png) ~chart1
+
+## Key Metrics ~metrics-heading
+
+| Metric       | Q3 2025 | Q4 2025 | Change |
+|--------------|---------|---------|--------|
+| ARR          | $42M    | $51M    | +21%   |
+| Net Revenue  | $12.5M  | $15.4M  | +23%   |
+| Customers    | 340     | 412     | +21%   |
+| NRR          | 118%    | 122%    | +4pp   |
+~metrics-table
+
+The {{c1}}enterprise segment{{/c1}} showed the strongest growth,
+contributing 67% of new ARR. ~p-enterprise
+
+Mid-market expansion was [ahead of plan]{~highlight} by 12%,
+driven by the new self-serve onboarding flow.
+
+> We're seeing unprecedented demand in the mid-market segment.
+> The pipeline for Q1 is already 40% larger than this time last year.
+> -- Sarah Chen, VP Sales
+~pull-quote
+
+## Regional Breakdown ~regional-heading
+
+![Regional map](regions.png) ~region-map
+
+- North America: +28% YoY
+- EMEA: +19% YoY
+- APAC: +31% YoY (fastest growing)
+~region-list
+
+***
+
+## Outlook
+
+We expect continued growth through H1 2026, with particular
+strength in healthcare and financial services verticals.
+
+Key {{c2}}risks include macro headwinds{{/c2}} in European markets
+and potential currency effects on APAC revenue.
+
+{{pagebreak}}
+
+## Appendix ~appendix
+
+Detailed breakdown by vertical available in the supplementary data.
+
+![Vertical breakdown](verticals.png) ~vertical-chart
+
+----------------------------------------
+
+@page {
+  size: letter;
+  margin: 1in;
+}
+
+@header {
+  content: "Q4 2025 Revenue Report — Confidential";
+  font-size: 8pt;
+  color: #999999;
+  align: right;
+  border-bottom: 0.5px solid #e0e0e0;
+}
+
+@footer {
+  content: "Page {{page}} of {{pages}}";
+  font-size: 8pt;
+  color: #999999;
+  align: center;
+}
+
+@.heading-base {
+  font-family: "Inter";
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+@.body-text {
+  font-family: "Inter";
+  font-size: 11pt;
+  color: #1a1a1a;
+  line-height: 1.6;
+}
+
+@defaults {
+  font-family: "Inter";
+  font-size: 11pt;
+  color: #1a1a1a;
+  line-height: 1.6;
+  heading-font-family: "Inter";
+  heading-1-size: 26pt;
+  heading-2-size: 20pt;
+  heading-3-size: 16pt;
+  heading-color: #1a1a1a;
+  link-color: #0066cc;
+  code-font-family: "Fira Code";
+  code-font-size: 10pt;
+}
+
+@title {
+  inherit: .heading-base;
+  font-size: 32pt;
+  color: #0a0a0a;
+  text-align: center;
+  margin-bottom: 8pt;
+}
+
+@summary {
+  inherit: .heading-base;
+  font-size: 16pt;
+  font-weight: 600;
+  color: #333333;
+  border-bottom: 2px solid #0066cc;
+  padding-bottom: 8pt;
+}
+
+@metrics-heading {
+  inherit: .heading-base;
+  font-size: 20pt;
+}
+
+@regional-heading {
+  inherit: .heading-base;
+  font-size: 20pt;
+}
+
+@appendix {
+  inherit: .heading-base;
+  font-size: 18pt;
+  color: #555555;
+}
+
+@p-intro {
+  inherit: .body-text;
+  font-size: 13pt;
+  color: #444444;
+  line-height: 1.7;
+}
+
+@p-enterprise {
+  inherit: .body-text;
+}
+
+@highlight {
+  color: #0066cc;
+  font-weight: 700;
+  background: #e6f0ff;
+}
+
+@chart1 {
+  width: 90%;
+  align: center;
+  caption: "Fig 1. Revenue growth Q3-Q4 2025";
+  caption-font-size: 9pt;
+  caption-color: #888888;
+  margin: 24pt 0;
+}
+
+@region-map {
+  width: 70%;
+  align: center;
+  caption: "Fig 2. Revenue by region";
+  caption-font-size: 9pt;
+  caption-color: #888888;
+  margin: 16pt 0;
+}
+
+@vertical-chart {
+  width: 80%;
+  align: center;
+  caption: "Fig 3. Revenue breakdown by vertical";
+  caption-font-size: 9pt;
+  caption-color: #888888;
+}
+
+@metrics-table {
+  width: 100%;
+  border-style: minimal;
+  header-bg: #f0f4f8;
+  header-font-weight: 700;
+  cell-padding: 10pt;
+  stripe: #f9fafb;
+  font-size: 11pt;
+  column-widths: 25% 25% 25% 25%;
+}
+
+@region-list {
+  font-size: 12pt;
+  color: #2a2a2a;
+  item-spacing: 8pt;
+}
+
+@pull-quote {
+  font-family: "Georgia";
+  font-style: italic;
+  font-size: 14pt;
+  color: #555555;
+  border-left: 3px solid #0066cc;
+  padding-left: 16pt;
+  margin: 32pt 0;
+}
+
+@comment:c1 {
+  author: "Igor";
+  date: "2026-03-29";
+  text: "Can we break this down by sub-segment? Mid-market vs large enterprise.";
+  resolved: false;
+}
+
+@comment:c2 {
+  author: "Priya";
+  date: "2026-03-30";
+  text: "Should we quantify the macro risk? Maybe add a sensitivity table.";
+  resolved: false;
+}
+
+----------------------------------------
+
+# mdxx Agent Guide
+
+## Rules
+- Section 1 is standard Markdown. Keep it human-readable.
+- Only add ~id tags to elements that need custom styling.
+- Use lowercase-kebab-case for IDs.
+- Comment anchors: {{id}}...{{/id}}
+- Inline spans: [text]{~id}
+- Never put styling in Section 1. Never put content in Section 2.
+
+## ID Conventions
+- Headings: descriptive (~title, ~summary, ~metrics-heading)
+- Paragraphs: ~p-descriptive-name
+- Images/Charts: ~chart1, ~hero-img, ~region-map
+- Tables: ~metrics-table
+- Lists: ~region-list
+- Inline spans: ~highlight
+- Comments: c1, c2, c3 (sequential)
+
+## Constraints
+- This is a quarterly revenue report for internal stakeholders.
+- Maintain professional, data-driven tone.
+- Do not remove existing comment anchors.
+- New sections use H2 for main sections, H3 for subsections.
+- All financial figures should use $XM format for millions.
+- Charts and images should always have captions defined in Section 2.

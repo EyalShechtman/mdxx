@@ -1,0 +1,7 @@
+.context/
+tmp/
+.next/
+node_modules/
+target/
+pkg/
+*.wasm
