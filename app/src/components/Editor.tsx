@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -118,19 +118,23 @@ Put any instructions here that help an AI understand and edit this document.
 
 interface EditorProps {
   initialContent: string;
+  initialComments?: CommentData[];
   onChange: (html: string) => void;
+  onCommentsChange?: (comments: CommentData[]) => void;
+  onTitleChange?: (title: string) => void;
 }
 
-export function Editor({ initialContent, onChange }: EditorProps) {
-  const [comments, setComments] = useState<CommentData[]>([
-    {
-      id: 'c1',
-      author: 'Igor',
-      text: 'Can we break this down by sub-segment? Mid-market vs large enterprise.',
-      date: '2026-03-29',
-      resolved: false,
-    },
-  ]);
+export function Editor({ initialContent, initialComments, onChange, onCommentsChange, onTitleChange }: EditorProps) {
+  const [comments, setCommentsRaw] = useState<CommentData[]>(initialComments ?? []);
+  const onCommentsChangeRef = useRef(onCommentsChange);
+  onCommentsChangeRef.current = onCommentsChange;
+  const setComments: typeof setCommentsRaw = useCallback((action) => {
+    setCommentsRaw((prev) => {
+      const next = typeof action === 'function' ? action(prev) : action;
+      onCommentsChangeRef.current?.(next);
+      return next;
+    });
+  }, []);
   const [showComments, setShowComments] = useState(false);
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [markdownSource, setMarkdownSource] = useState('');
@@ -171,6 +175,16 @@ export function Editor({ initialContent, onChange }: EditorProps) {
       const html = editor.getHTML();
       onChange(html);
       updateMarkdownSource(html);
+      // Extract title from first H1
+      if (onTitleChange) {
+        let title = '';
+        editor.state.doc.descendants((node) => {
+          if (!title && node.type.name === 'heading' && node.attrs.level === 1) {
+            title = node.textContent;
+          }
+        });
+        if (title) onTitleChange(title);
+      }
     },
     editorProps: {
       attributes: {
