@@ -1,5 +1,5 @@
 'use client';
-import { type Editor } from '@tiptap/react';
+import { type Editor, useEditorState } from '@tiptap/react';
 import { useCallback } from 'react';
 
 interface ToolbarProps {
@@ -81,6 +81,87 @@ function HeadingDropdown({ editor }: { editor: Editor }) {
   );
 }
 
+const FONT_FAMILIES = [
+  'Inter',
+  'Arial',
+  'Helvetica',
+  'Times New Roman',
+  'Georgia',
+  'Garamond',
+  'Courier New',
+  'Verdana',
+  'Trebuchet MS',
+  'Palatino',
+  'Cambria',
+  'Calibri',
+  'Fira Code',
+];
+
+const FONT_SIZES = [
+  '8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt',
+  '20pt', '22pt', '24pt', '26pt', '28pt', '36pt', '48pt', '72pt',
+];
+
+function FontFamilyDropdown({ editor }: { editor: Editor }) {
+  const currentFont = useEditorState({
+    editor,
+    selector: ({ editor: e }) => e?.getAttributes('textStyle').fontFamily ?? '',
+  }) ?? '';
+
+  return (
+    <select
+      value={currentFont}
+      onChange={(e) => {
+        const font = e.target.value;
+        if (font) {
+          editor.chain().focus().setFontFamily(font).run();
+        } else {
+          editor.chain().focus().unsetFontFamily().run();
+        }
+      }}
+      className="px-2 py-1.5 rounded text-sm font-medium text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer outline-none min-w-[120px]"
+      title="Font family"
+    >
+      <option value="">Font</option>
+      {FONT_FAMILIES.map((font) => (
+        <option key={font} value={font} style={{ fontFamily: font }}>
+          {font}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function FontSizeDropdown({ editor }: { editor: Editor }) {
+  const currentSize = useEditorState({
+    editor,
+    selector: ({ editor: e }) => e?.getAttributes('textStyle').fontSize ?? '',
+  }) ?? '';
+
+  return (
+    <select
+      value={currentSize}
+      onChange={(e) => {
+        const size = e.target.value;
+        if (size) {
+          editor.chain().focus().setFontSize(size).run();
+        } else {
+          editor.chain().focus().unsetFontSize().run();
+        }
+      }}
+      className="px-2 py-1.5 rounded text-sm font-medium text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer outline-none min-w-[70px]"
+      title="Font size"
+    >
+      <option value="">Size</option>
+      {FONT_SIZES.map((size) => (
+        <option key={size} value={size}>
+          {size}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function Toolbar({ editor, onAddComment, onAddStyle, onTagBlock, onToggleComments, onToggleMarkdown, showMarkdown, commentCount }: ToolbarProps) {
   if (!editor) return null;
 
@@ -107,6 +188,8 @@ export function Toolbar({ editor, onAddComment, onAddStyle, onTagBlock, onToggle
 
       {/* Text Style */}
       <HeadingDropdown editor={editor} />
+      <FontFamilyDropdown editor={editor} />
+      <FontSizeDropdown editor={editor} />
 
       <Divider />
 
