@@ -12,7 +12,7 @@ import Highlight from '@tiptap/extension-highlight';
 import { TextStyle, Color, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { TableKit } from '@tiptap/extension-table';
 import { PageBreak } from '@/extensions/page-break';
-import { CommentMark, type CommentData } from '@/extensions/comment-mark';
+import { CommentMark, type CommentData, type CommentReply } from '@/extensions/comment-mark';
 import { StyledSpan } from '@/extensions/styled-span';
 import { BlockId } from '@/extensions/block-id';
 import { Toolbar } from './Toolbar';
@@ -21,6 +21,8 @@ import { CommentDialog } from './CommentDialog';
 import { StyleDialog } from './StyleDialog';
 import { BlockIdDialog } from './BlockIdDialog';
 import { MarkdownPanel } from './MarkdownPanel';
+import { ZoomStatusBar } from './ZoomStatusBar';
+import { CommentPopover } from './CommentPopover';
 import { htmlToMdxx } from '@/lib/html-to-mdxx';
 
 const AGENT_INSTRUCTIONS = `# mdxx Document Format
@@ -232,6 +234,10 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
   const [showStyleDialog, setShowStyleDialog] = useState(false);
   const [showBlockIdDialog, setShowBlockIdDialog] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(100);
+  const [hoveredComment, setHoveredComment] = useState<CommentData | null>(null);
+  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
+  const popoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -307,12 +313,19 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
 
     // Collect comment definitions
     for (const c of comments) {
-      styleLines.push(`@${c.id} {`);
-      styleLines.push(`  type: comment`);
+      styleLines.push(`@comment:${c.id} {`);
       styleLines.push(`  author: "${c.author}"`);
       styleLines.push(`  date: "${c.date}"`);
       if (c.resolved) styleLines.push(`  resolved: true`);
+      if (c.editedAt) styleLines.push(`  edited-at: "${c.editedAt}"`);
       styleLines.push(`  text: "${c.text}"`);
+      if (c.replies) {
+        for (const r of c.replies) {
+          styleLines.push(`  reply:${r.id}.author: "${r.author}"`);
+          styleLines.push(`  reply:${r.id}.date: "${r.date}"`);
+          styleLines.push(`  reply:${r.id}.text: "${r.text}"`);
+        }
+      }
       styleLines.push(`}`);
       styleLines.push('');
     }
@@ -381,6 +394,7 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
       text,
       date: new Date().toISOString().split('T')[0],
       resolved: false,
+      replies: [],
     };
     editor.commands.setComment(id);
     setComments(prev => [...prev, newComment]);
@@ -408,6 +422,38 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
     editor.view.dispatch(tr);
     setComments(prev => prev.filter(c => c.id !== id));
   }, [editor]);
+
+  const handleEditComment = useCallback((id: string, newText: string) => {
+    setComments(prev =>
+      prev.map(c => c.id === id ? { ...c, text: newText, editedAt: new Date().toISOString().split('T')[0] } : c)
+    );
+  }, []);
+
+  const handleReplyComment = useCallback((commentId: string, author: string, text: string) => {
+    setComments(prev =>
+      prev.map(c => {
+        if (c.id !== commentId) return c;
+        const replyNums = c.replies.map(r => {
+          const match = r.id.match(/^r(\d+)$/);
+          return match ? parseInt(match[1]) : 0;
+        });
+        const newReply: CommentReply = {
+          id: `r${Math.max(0, ...replyNums) + 1}`,
+          author,
+          text,
+          date: new Date().toISOString().split('T')[0],
+        };
+        return { ...c, replies: [...c.replies, newReply] };
+      })
+    );
+  }, []);
+
+  const handlePopoverReply = useCallback((commentId: string) => {
+    setHoveredComment(null);
+    setPopoverPosition(null);
+    setActiveCommentId(commentId);
+    setShowComments(true);
+  }, []);
 
   const handleAddStyle = useCallback(() => {
     if (!editor || editor.state.selection.empty) return;
@@ -510,6 +556,73 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
     }
   }, [activeCommentId]);
 
+  // Hover popover for comment highlights
+  const commentsRef = useRef(comments);
+  commentsRef.current = comments;
+
+  const cancelPopoverClose = useCallback(() => {
+    if (popoverTimerRef.current) {
+      clearTimeout(popoverTimerRef.current);
+      popoverTimerRef.current = null;
+    }
+  }, []);
+
+  const schedulePopoverClose = useCallback(() => {
+    cancelPopoverClose();
+    popoverTimerRef.current = setTimeout(() => {
+      setHoveredComment(null);
+      setPopoverPosition(null);
+    }, 200);
+  }, [cancelPopoverClose]);
+
+  useEffect(() => {
+    const wrapper = editorWrapperRef.current;
+    if (!wrapper) return;
+
+    const handleMouseEnter = (e: Event) => {
+      const target = e.target as HTMLElement;
+      const commentId = target.getAttribute('data-comment-id');
+      if (!commentId) return;
+      cancelPopoverClose();
+      const comment = commentsRef.current.find(c => c.id === commentId);
+      if (!comment) return;
+      const rect = target.getBoundingClientRect();
+      setHoveredComment(comment);
+      setPopoverPosition({ top: rect.top, left: rect.left });
+    };
+
+    const handleMouseLeave = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (!target.getAttribute('data-comment-id')) return;
+      schedulePopoverClose();
+    };
+
+    const observer = new MutationObserver(() => {
+      wrapper.querySelectorAll('.mdxx-comment-highlight').forEach(span => {
+        span.removeEventListener('mouseenter', handleMouseEnter);
+        span.removeEventListener('mouseleave', handleMouseLeave);
+        span.addEventListener('mouseenter', handleMouseEnter);
+        span.addEventListener('mouseleave', handleMouseLeave);
+      });
+    });
+
+    observer.observe(wrapper, { childList: true, subtree: true });
+
+    // Initial bind
+    wrapper.querySelectorAll('.mdxx-comment-highlight').forEach(span => {
+      span.addEventListener('mouseenter', handleMouseEnter);
+      span.addEventListener('mouseleave', handleMouseLeave);
+    });
+
+    return () => {
+      observer.disconnect();
+      wrapper.querySelectorAll('.mdxx-comment-highlight').forEach(span => {
+        span.removeEventListener('mouseenter', handleMouseEnter);
+        span.removeEventListener('mouseleave', handleMouseLeave);
+      });
+    };
+  }, [cancelPopoverClose, schedulePopoverClose]);
+
   // Cmd+S / Ctrl+S keyboard shortcut
   useEffect(() => {
     if (!onSave) return;
@@ -518,10 +631,14 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
         e.preventDefault();
         onSave();
       }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'm') {
+        e.preventDefault();
+        handleAddComment();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onSave]);
+  }, [onSave, handleAddComment]);
 
   // Register mdxx builder with the file context
   const onBuildMdxxRef = useRef(onBuildMdxx);
@@ -550,14 +667,29 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
           showMarkdown={showMarkdown}
           commentCount={activeCommentCount}
         />
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto bg-[#e8e8e8]">
           <div
-            ref={editorWrapperRef}
-            className="max-w-4xl mx-auto px-12 py-8 min-h-full"
+            className="flex flex-col items-center py-6"
+            style={{
+              transform: `scale(${zoom / 100})`,
+              transformOrigin: 'top center',
+              minHeight: `${100 / (zoom / 100)}%`,
+            }}
           >
-            <EditorContent editor={editor} />
+            <div
+              ref={editorWrapperRef}
+              className="mdxx-page bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.08)]"
+              style={{
+                width: '816px',
+                minHeight: '1056px',
+                padding: '96px 96px',
+              }}
+            >
+              <EditorContent editor={editor} />
+            </div>
           </div>
         </div>
+        <ZoomStatusBar zoom={zoom} onZoomChange={setZoom} />
         {showMarkdown && (
           <MarkdownPanel
             markdown={markdownSource}
@@ -575,9 +707,20 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
           onSetActiveComment={setActiveCommentId}
           onResolve={handleResolveComment}
           onDelete={handleDeleteComment}
+          onEdit={handleEditComment}
+          onReply={handleReplyComment}
           onClose={() => setShowComments(false)}
         />
       )}
+
+      <CommentPopover
+        comment={hoveredComment}
+        position={popoverPosition}
+        onResolve={handleResolveComment}
+        onReply={handlePopoverReply}
+        onMouseEnter={cancelPopoverClose}
+        onMouseLeave={schedulePopoverClose}
+      />
 
       {showCommentDialog && (
         <CommentDialog

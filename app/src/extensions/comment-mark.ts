@@ -1,11 +1,20 @@
 import { Mark, mergeAttributes } from '@tiptap/react';
 
+export interface CommentReply {
+  id: string;
+  author: string;
+  text: string;
+  date: string;
+}
+
 export interface CommentData {
   id: string;
   author: string;
   text: string;
   date: string;
   resolved: boolean;
+  replies: CommentReply[];
+  editedAt?: string;
 }
 
 declare module '@tiptap/react' {
@@ -19,6 +28,7 @@ declare module '@tiptap/react' {
 
 export const CommentMark = Mark.create({
   name: 'comment',
+  inclusive: false,
 
   addAttributes() {
     return {
