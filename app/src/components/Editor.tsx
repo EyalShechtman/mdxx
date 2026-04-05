@@ -37,14 +37,16 @@ Append \`~id\` at the end of any block line to tag it for styling.
 \`\`\`
 ## Revenue Overview ~section-revenue
 Some paragraph text ~intro-paragraph
+![Chart](chart.png) ~chart1
 \`\`\`
+Use lowercase-kebab-case for all IDs.
 
 ### Comment Anchors
 Wrap inline text with \`{{commentId}}...{{/commentId}}\` to attach a comment.
 \`\`\`
 The {{c1}}enterprise segment{{/c1}} showed strong growth.
 \`\`\`
-The comment's metadata (author, text, date) is defined in Section 2.
+The comment's metadata (author, text, date) is defined in Section 2 using \`@comment:id\`.
 
 ### Styled Spans
 Wrap inline text with \`[text]{~styleId}\` to apply a named style.
@@ -64,42 +66,125 @@ task lists (- [x]), tables (| col |), and horizontal rules (***).
 
 ## Section 2: Styles & Metadata
 
-Define styles and metadata using \`@id { ... }\` blocks.
+Define styles and metadata using \`@blockname { key: value; }\` blocks.
+Properties are separated by semicolons. String values use quotes.
 
 ### Comment Definitions
 \`\`\`
-@c1 {
-  type: comment
-  author: "Igor"
-  date: "2026-03-29"
-  text: "Can we break this down by sub-segment?"
+@comment:c1 {
+  author: "Igor";
+  date: "2026-03-29";
+  text: "Can we break this down by sub-segment?";
+  resolved: false;
 }
 \`\`\`
 
-### Element Styles (applied to blocks via ~id or spans via {~id})
+### Element Styles
+Applied to blocks tagged with \`~id\` or inline spans with \`[text]{~id}\`.
 \`\`\`
 @section-revenue {
-  font-size: 24px
-  color: #1a1a2e
+  font-size: 24pt;
+  color: #1a1a2e;
+  margin-bottom: 12pt;
 }
 @emphasis {
-  font-weight: bold
-  color: #e63946
+  font-weight: 700;
+  color: #e63946;
+  background: #fff0f0;
 }
 \`\`\`
 
-### Page Styles
+### Abstract Blocks & Inheritance
+Define reusable style bases with \`@.name\`, then inherit with \`inherit: .name\`.
+\`\`\`
+@.heading-base {
+  font-family: "Inter";
+  font-weight: 700;
+  color: #1a1a1a;
+}
+@title {
+  inherit: .heading-base;
+  font-size: 32pt;
+  color: #0a0a0a;
+}
+\`\`\`
+The element's own properties override inherited ones.
+
+### Page Layout
 \`\`\`
 @page {
-  size: letter
-  margin: 1in
+  size: letter;
+  orientation: portrait;
+  margin: 1in;
+  columns: 2;
+  column-gap: 24pt;
+}
+\`\`\`
+Page properties: \`size\` (letter, a4, a5), \`orientation\` (portrait, landscape),
+\`margin\` / \`margin-top\` / \`margin-bottom\` / \`margin-left\` / \`margin-right\`,
+\`columns\` (number), \`column-gap\`.
+
+### Header & Footer
+Repeated on every page. Use \`{{page}}\` and \`{{pages}}\` for page numbers.
+\`\`\`
+@header {
+  content: "Report — Confidential";
+  font-size: 8pt;
+  color: #999999;
+  align: right;
+  border-bottom: 1px solid #cccccc;
+}
+@footer {
+  content: "Page {{page}} of {{pages}}";
+  font-size: 8pt;
+  align: center;
+}
+\`\`\`
+Properties: \`content\`, \`font-size\`, \`color\`, \`align\`, \`border-bottom\`, \`border-top\`.
+
+### Document Defaults
+Base styles inherited by all elements.
+\`\`\`
+@defaults {
+  font-family: "Inter";
+  font-size: 11pt;
+  color: #1a1a1a;
+  line-height: 1.6;
+  heading-font-family: "Inter";
+  heading-color: #1a1a1a;
+  heading-1-size: 26pt;
+  heading-2-size: 20pt;
+  heading-3-size: 16pt;
+  link-color: #0066cc;
+  code-font-family: "Fira Code";
+  code-font-size: 10pt;
 }
 \`\`\`
 
-### Special Blocks
-- \`@defaults { ... }\` — base styles inherited by all elements
-- \`@header { ... }\` / \`@footer { ... }\` — page header/footer with \`content: "Page {{page}} of {{pages}}"\`
-- \`@abstract { ... }\` — document abstract/summary metadata
+### Properties Reference
+
+**Typography** (any element):
+font-family, font-size, font-weight, font-style, color, background,
+text-align (or align), text-transform, text-decoration, letter-spacing, line-height.
+
+**Spacing & Borders** (any element):
+margin, margin-top/bottom/left/right, padding, padding-top/bottom/left/right,
+border, border-top/bottom/left/right, border-radius, shadow, width, max-width.
+
+**Image-specific** (\`![alt](src) ~id\`):
+width, max-width, height, align (left/center/right), object-fit (cover/contain/fill),
+caption ("quoted text"), caption-font-size, caption-color,
+border, border-radius, shadow, margin.
+
+**Table-specific** (table tagged with \`~id\`):
+border-style (minimal/full/none), header-bg, header-font-weight,
+cell-padding, stripe (alternating row color), column-widths (e.g. "25% 25% 25% 25%").
+
+**List-specific** (list tagged with \`~id\`):
+list-style (disc/decimal/none), indent, item-spacing.
+
+**Code block-specific** (code block tagged with \`~id\`):
+line-numbers (true/false), highlight-lines ("3-5 8"), theme (dark/light).
 
 ## Section 3: Agent Instructions (this section)
 
@@ -108,12 +193,15 @@ Put any instructions here that help an AI understand and edit this document.
 
 ## How to Edit This Document
 
-- To change content: edit Section 1 using markdown syntax above
-- To add a comment: wrap text with {{id}}...{{/id}} in Section 1, add @id definition in Section 2
-- To style a block: add ~id to end of line in Section 1, add @id { props } in Section 2
-- To style inline text: wrap with [text]{~id} in Section 1, add @id { props } in Section 2
-- To add a page break: insert {{pagebreak}} on its own line
+- To change content: edit Section 1 using standard Markdown
+- To style a block: add \`~id\` to end of line in Section 1, add \`@id { props }\` in Section 2
+- To style inline text: wrap with \`[text]{~id}\` in Section 1, add \`@id { props }\` in Section 2
+- To add a comment: wrap text with \`{{id}}...{{/id}}\` in Section 1, add \`@comment:id { ... }\` in Section 2
+- To add a page break: insert \`{{pagebreak}}\` on its own line
+- To reuse styles: define \`@.base { ... }\` then use \`inherit: .base\` in element blocks
+- To control layout: edit the \`@page { ... }\` block (columns, margins, size)
 - Section separators must be 40+ dashes on their own line
+- Never put styling in Section 1. Never put content in Section 2.
 `;
 
 interface EditorProps {
