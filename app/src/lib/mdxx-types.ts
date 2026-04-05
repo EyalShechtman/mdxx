@@ -93,12 +93,21 @@ export interface AbstractStyle {
   properties: StyleProperty[];
 }
 
+export interface ReplyDef {
+  id: string;
+  author: string | null;
+  date: string | null;
+  text: string | null;
+}
+
 export interface CommentDef {
   id: string;
   author: string | null;
   date: string | null;
   text: string | null;
   resolved: boolean;
+  edited_at: string | null;
+  replies: ReplyDef[];
 }
 
 export interface StyleSheet {

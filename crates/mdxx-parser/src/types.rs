@@ -139,12 +139,22 @@ pub struct StyleProperty {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ReplyDef {
+    pub id: String,
+    pub author: Option<String>,
+    pub date: Option<String>,
+    pub text: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CommentDef {
     pub id: String,
     pub author: Option<String>,
     pub date: Option<String>,
     pub text: Option<String>,
     pub resolved: bool,
+    pub edited_at: Option<String>,
+    pub replies: Vec<ReplyDef>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

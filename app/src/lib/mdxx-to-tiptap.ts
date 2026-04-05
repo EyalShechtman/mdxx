@@ -1,5 +1,5 @@
 import { initWasm, parseMdxx } from './wasm';
-import type { ContentNode, InlineNode, Alignment } from './mdxx-types';
+import type { ContentNode, InlineNode, Alignment, CommentDef, ReplyDef } from './mdxx-types';
 import type { CommentData } from '@/extensions/comment-mark';
 
 // ---------------------------------------------------------------------------
@@ -201,12 +201,19 @@ export async function mdxxToTiptap(
 
   const html = renderContentNodes(output.document.content, styleMap);
 
-  const comments: CommentData[] = output.document.styles.comments.map((def) => ({
-    id: def.id,
-    author: def.author ?? '',
-    text: def.text ?? '',
-    date: def.date ?? '',
-    resolved: def.resolved,
+  const comments: CommentData[] = (output.document.styles.comments || []).map((c: CommentDef) => ({
+    id: c.id,
+    author: c.author || '',
+    text: c.text || '',
+    date: c.date || '',
+    resolved: c.resolved,
+    editedAt: c.edited_at || undefined,
+    replies: (c.replies || []).map((r: ReplyDef) => ({
+      id: r.id,
+      author: r.author || '',
+      text: r.text || '',
+      date: r.date || '',
+    })),
   }));
 
   return { html, comments };

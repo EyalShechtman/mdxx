@@ -1,6 +1,6 @@
 use crate::types::{
     AbstractStyle, CommentDef, DefaultStyles, ElementStyle, HeaderFooterStyle, PageStyle,
-    StyleProperty, StyleSheet,
+    ReplyDef, StyleProperty, StyleSheet,
 };
 
 enum BlockKind {
@@ -140,7 +140,17 @@ fn parse_properties(body: &str) -> Vec<(String, String)> {
         if part.is_empty() {
             continue;
         }
-        if let Some(colon_pos) = part.find(':') {
+        // For reply properties the key contains a colon (e.g. "reply:r1.author"),
+        // so we need to find the value-separator colon — the one after the key.
+        // Strategy: if the part starts with "reply:", find the next colon after that prefix.
+        let colon_pos = if part.starts_with("reply:") {
+            // key is "reply:id.field", separator colon follows the dot-field portion
+            part["reply:".len()..].find(':').map(|p| "reply:".len() + p)
+        } else {
+            part.find(':')
+        };
+
+        if let Some(colon_pos) = colon_pos {
             let key = part[..colon_pos].trim().to_string();
             let value = part[colon_pos + 1..].trim().to_string();
             if !key.is_empty() && !value.is_empty() {
@@ -262,17 +272,45 @@ fn parse_comment(id: &str, props: &[(String, String)]) -> CommentDef {
         date: None,
         text: None,
         resolved: false,
+        edited_at: None,
+        replies: Vec::new(),
     };
+
+    let mut reply_map: std::collections::BTreeMap<String, ReplyDef> =
+        std::collections::BTreeMap::new();
+
     for (key, value) in props {
         let value = strip_quotes(value);
-        match key.as_str() {
-            "author" => comment.author = Some(value),
-            "date" => comment.date = Some(value),
-            "text" => comment.text = Some(value),
-            "resolved" => comment.resolved = value == "true",
-            _ => {}
+        if let Some(rest) = key.strip_prefix("reply:") {
+            if let Some((reply_id, field)) = rest.split_once('.') {
+                let entry = reply_map
+                    .entry(reply_id.to_string())
+                    .or_insert_with(|| ReplyDef {
+                        id: reply_id.to_string(),
+                        author: None,
+                        date: None,
+                        text: None,
+                    });
+                match field {
+                    "author" => entry.author = Some(value),
+                    "date" => entry.date = Some(value),
+                    "text" => entry.text = Some(value),
+                    _ => {}
+                }
+            }
+        } else {
+            match key.as_str() {
+                "author" => comment.author = Some(value),
+                "date" => comment.date = Some(value),
+                "text" => comment.text = Some(value),
+                "resolved" => comment.resolved = value == "true",
+                "edited-at" => comment.edited_at = Some(value),
+                _ => {}
+            }
         }
     }
+
+    comment.replies = reply_map.into_values().collect();
     comment
 }
 
@@ -420,6 +458,41 @@ mod tests {
         assert_eq!(c.id, "c1");
         assert_eq!(c.author.as_deref(), Some("Igor"));
         assert!(!c.resolved);
+    }
+
+    #[test]
+    fn parse_comment_with_replies() {
+        let input = r#"
+@comment:c1 {
+  author: "Eyal";
+  text: "Fix this";
+  date: "2026-04-05";
+  reply:r1.author: "Nadya";
+  reply:r1.text: "Done";
+  reply:r1.date: "2026-04-06";
+  reply:r2.author: "Igor";
+  reply:r2.text: "Confirmed";
+}"#;
+        let (ss, errors) = parse_styles(input);
+        assert!(errors.is_empty());
+        assert_eq!(ss.comments.len(), 1);
+        let c = &ss.comments[0];
+        assert_eq!(c.id, "c1");
+        assert_eq!(c.author.as_deref(), Some("Eyal"));
+        assert_eq!(c.text.as_deref(), Some("Fix this"));
+        assert_eq!(c.date.as_deref(), Some("2026-04-05"));
+        assert_eq!(c.replies.len(), 2);
+
+        // BTreeMap preserves insertion order by key, so r1 comes before r2
+        let r1 = c.replies.iter().find(|r| r.id == "r1").expect("r1 not found");
+        assert_eq!(r1.author.as_deref(), Some("Nadya"));
+        assert_eq!(r1.text.as_deref(), Some("Done"));
+        assert_eq!(r1.date.as_deref(), Some("2026-04-06"));
+
+        let r2 = c.replies.iter().find(|r| r.id == "r2").expect("r2 not found");
+        assert_eq!(r2.author.as_deref(), Some("Igor"));
+        assert_eq!(r2.text.as_deref(), Some("Confirmed"));
+        assert_eq!(r2.date, None);
     }
 
     #[test]

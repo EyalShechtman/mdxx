@@ -1,6 +1,6 @@
 'use client';
 import { type Editor, useEditorState } from '@tiptap/react';
-import { useCallback } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -162,6 +162,72 @@ function FontSizeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
+const TEXT_COLORS = [
+  '#1a1a1a', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#2563eb', '#7c3aed', '#db2777',
+  '#6b7280', '#991b1b', '#9a3412', '#854d0e', '#166534', '#1e40af', '#5b21b6', '#9d174d',
+];
+
+function ColorPickerButton({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const currentColor = useEditorState({
+    editor,
+    selector: ({ editor: e }) => e?.getAttributes('textStyle').color ?? '#1a1a1a',
+  }) ?? '#1a1a1a';
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        title="Text color"
+        className="px-2 py-1.5 rounded text-sm font-medium transition-colors border text-gray-600 hover:bg-gray-100 border-transparent hover:border-gray-200 cursor-pointer"
+      >
+        <span className="flex flex-col items-center gap-0">
+          <span className="text-[13px] font-bold">A</span>
+          <span className="w-4 h-1 rounded-sm -mt-0.5" style={{ background: currentColor }} />
+        </span>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-50 grid grid-cols-8 gap-1 w-[196px]">
+          {TEXT_COLORS.map((color) => (
+            <button
+              key={color}
+              onClick={() => {
+                editor.chain().focus().setColor(color).run();
+                setOpen(false);
+              }}
+              className="w-5 h-5 rounded-sm border border-gray-200 hover:scale-125 transition-transform cursor-pointer"
+              style={{ background: color }}
+              title={color}
+            />
+          ))}
+          <div className="col-span-8 border-t border-gray-100 mt-1 pt-1 flex items-center gap-2">
+            <input
+              type="color"
+              value={currentColor}
+              onChange={(e) => {
+                editor.chain().focus().setColor(e.target.value).run();
+              }}
+              className="w-5 h-5 border-0 p-0 cursor-pointer"
+              title="Custom color"
+            />
+            <span className="text-xs text-gray-400">Custom</span>
+            <button
+              onClick={() => {
+                editor.chain().focus().unsetColor().run();
+                setOpen(false);
+              }}
+              className="ml-auto text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Toolbar({ editor, onAddComment, onAddStyle, onTagBlock, onToggleComments, onToggleMarkdown, showMarkdown, commentCount }: ToolbarProps) {
   if (!editor) return null;
 
@@ -209,6 +275,7 @@ export function Toolbar({ editor, onAddComment, onAddStyle, onTagBlock, onToggle
       <Btn onClick={() => editor.chain().focus().toggleHighlight().run()} active={editor.isActive('highlight')} title="Highlight">
         <span className="bg-yellow-200 px-0.5 text-[13px] rounded-sm">H</span>
       </Btn>
+      <ColorPickerButton editor={editor} />
 
       <Divider />
 

@@ -42,6 +42,13 @@
         "description": "MDXX rich text document",
         "mimeType": "application/x-mdxx",
         "role": "Editor"
+      },
+      {
+        "ext": ["md"],
+        "name": "Markdown Document",
+        "description": "Markdown document",
+        "mimeType": "text/markdown",
+        "role": "Editor"
       }
     ]
   }

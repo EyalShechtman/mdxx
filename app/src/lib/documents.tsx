@@ -105,6 +105,7 @@ function loadDocuments(): Document[] {
         text: 'Can we break this down by sub-segment? Mid-market vs large enterprise.',
         date: '2026-03-29',
         resolved: false,
+        replies: [],
       },
     ],
     folder: null,
