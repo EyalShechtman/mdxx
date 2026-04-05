@@ -122,9 +122,11 @@ interface EditorProps {
   onChange: (html: string) => void;
   onCommentsChange?: (comments: CommentData[]) => void;
   onTitleChange?: (title: string) => void;
+  onSave?: () => void;
+  onBuildMdxx?: (fn: () => string) => void;
 }
 
-export function Editor({ initialContent, initialComments, onChange, onCommentsChange, onTitleChange }: EditorProps) {
+export function Editor({ initialContent, initialComments, onChange, onCommentsChange, onTitleChange, onSave, onBuildMdxx }: EditorProps) {
   const [comments, setComments] = useState<CommentData[]>(initialComments ?? []);
   const onCommentsChangeRef = useRef(onCommentsChange);
   onCommentsChangeRef.current = onCommentsChange;
@@ -405,6 +407,30 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
       });
     }
   }, [activeCommentId]);
+
+  // Cmd+S / Ctrl+S keyboard shortcut
+  useEffect(() => {
+    if (!onSave) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        onSave();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onSave]);
+
+  // Register mdxx builder with the file context
+  const onBuildMdxxRef = useRef(onBuildMdxx);
+  onBuildMdxxRef.current = onBuildMdxx;
+  useEffect(() => {
+    if (!onBuildMdxxRef.current) return;
+    onBuildMdxxRef.current(() => {
+      const html = editor?.getHTML() ?? '';
+      return buildFullMdxx(html);
+    });
+  }, [editor, buildFullMdxx]);
 
   const commentTexts = getCommentTexts();
   const activeCommentCount = comments.filter(c => !c.resolved).length;

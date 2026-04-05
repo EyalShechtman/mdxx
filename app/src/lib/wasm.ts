@@ -1,4 +1,7 @@
 import init, { parse_mdxx } from './mdxx-wasm/mdxx_parser.js';
+import type { MdxxDocument, ParseOutput } from './mdxx-types';
+
+export type { MdxxDocument, ParseOutput };
 
 let initialized = false;
 
@@ -7,12 +10,6 @@ export async function initWasm() {
     await init();
     initialized = true;
   }
-}
-
-export interface ParseOutput {
-  document: unknown;
-  html: string;
-  errors: string[];
 }
 
 export function parseMdxx(input: string): ParseOutput {
