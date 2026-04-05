@@ -9,8 +9,7 @@ import Image from '@tiptap/extension-image';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Highlight from '@tiptap/extension-highlight';
-import { TextStyle } from '@tiptap/extension-text-style';
-import { Color } from '@tiptap/extension-text-style';
+import { TextStyle, Color, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { TableKit } from '@tiptap/extension-table';
 import { PageBreak } from '@/extensions/page-break';
 import { CommentMark, type CommentData } from '@/extensions/comment-mark';
@@ -256,6 +255,8 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
       Highlight.configure({ multicolor: false }),
       TextStyle,
       Color,
+      FontFamily,
+      FontSize,
       TableKit,
       PageBreak,
       CommentMark,
@@ -299,7 +300,7 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
   });
 
   const buildFullMdxx = useCallback((html: string) => {
-    const content = htmlToMdxx(html);
+    const { markdown: content, inlineStyles } = htmlToMdxx(html);
 
     // Build Section 2: Styles
     const styleLines: string[] = [];
@@ -317,8 +318,8 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
     }
 
     // Collect style IDs from the editor
+    const styleIds = new Set<string>();
     if (editor) {
-      const styleIds = new Set<string>();
       editor.state.doc.descendants((node) => {
         node.marks.forEach(mark => {
           if (mark.type.name === 'styledSpan' && mark.attrs.styleId) {
@@ -329,6 +330,19 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
       for (const id of styleIds) {
         styleLines.push(`@${id} {`);
         styleLines.push(`  /* custom styles */`);
+        styleLines.push(`}`);
+        styleLines.push('');
+      }
+    }
+
+    // Generate style blocks for auto-generated inline styles (font/size)
+    for (const entry of inlineStyles) {
+      // Skip if already covered by a user-named style
+      if (!styleIds.has(entry.id)) {
+        styleLines.push(`@${entry.id} {`);
+        for (const [key, value] of Object.entries(entry.properties)) {
+          styleLines.push(`  ${key}: ${value};`);
+        }
         styleLines.push(`}`);
         styleLines.push('');
       }

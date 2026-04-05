@@ -18,28 +18,39 @@ function escapeHtml(text: string): string {
 // Inline node rendering
 // ---------------------------------------------------------------------------
 
-function renderInlineNodes(nodes: InlineNode[]): string {
-  return nodes.map(renderInlineNode).join('');
+function renderInlineNodes(nodes: InlineNode[], styleMap: Map<string, Record<string, string>>): string {
+  return nodes.map(node => renderInlineNode(node, styleMap)).join('');
 }
 
-function renderInlineNode(node: InlineNode): string {
+function renderInlineNode(node: InlineNode, styleMap: Map<string, Record<string, string>>): string {
   switch (node.type) {
     case 'Text':
       return escapeHtml(node.text);
     case 'Bold':
-      return `<strong>${renderInlineNodes(node.children)}</strong>`;
+      return `<strong>${renderInlineNodes(node.children, styleMap)}</strong>`;
     case 'Italic':
-      return `<em>${renderInlineNodes(node.children)}</em>`;
+      return `<em>${renderInlineNodes(node.children, styleMap)}</em>`;
     case 'Code':
       return `<code>${escapeHtml(node.text)}</code>`;
     case 'Link':
       return `<a href="${escapeHtml(node.url)}">${escapeHtml(node.text)}</a>`;
     case 'CommentAnchor':
-      return `<span data-comment-id="${escapeHtml(node.id)}">${renderInlineNodes(node.children)}</span>`;
-    case 'StyledSpan':
-      return `<span data-style-id="${escapeHtml(node.id)}">${renderInlineNodes(node.children)}</span>`;
+      return `<span data-comment-id="${escapeHtml(node.id)}">${renderInlineNodes(node.children, styleMap)}</span>`;
+    case 'StyledSpan': {
+      const props = styleMap.get(node.id);
+      let styleAttr = '';
+      if (props) {
+        const parts: string[] = [];
+        const fontFamily = props['font-family'];
+        const fontSize = props['font-size'];
+        if (fontFamily) parts.push(`font-family: ${fontFamily}`);
+        if (fontSize) parts.push(`font-size: ${fontSize}`);
+        if (parts.length > 0) styleAttr = ` style="${parts.join('; ')}"`;
+      }
+      return `<span data-style-id="${escapeHtml(node.id)}"${styleAttr}>${renderInlineNodes(node.children, styleMap)}</span>`;
+    }
     case 'Strikethrough':
-      return `<s>${renderInlineNodes(node.children)}</s>`;
+      return `<s>${renderInlineNodes(node.children, styleMap)}</s>`;
   }
 }
 
@@ -64,18 +75,18 @@ function alignmentToStyle(alignment: Alignment): string {
 // Content node rendering
 // ---------------------------------------------------------------------------
 
-function renderContentNode(node: ContentNode): string {
+function renderContentNode(node: ContentNode, styleMap: Map<string, Record<string, string>>): string {
   switch (node.type) {
     case 'Heading': {
       const tag = `h${node.level}`;
       const idAttr = node.id != null ? ` data-block-id="${escapeHtml(node.id)}"` : '';
-      const inner = renderInlineNodes(node.children);
+      const inner = renderInlineNodes(node.children, styleMap);
       return `<${tag}${idAttr}>${inner}</${tag}>`;
     }
 
     case 'Paragraph': {
       const idAttr = node.id != null ? ` data-block-id="${escapeHtml(node.id)}"` : '';
-      const inner = renderInlineNodes(node.children);
+      const inner = renderInlineNodes(node.children, styleMap);
       return `<p${idAttr}>${inner}</p>`;
     }
 
@@ -91,7 +102,7 @@ function renderContentNode(node: ContentNode): string {
         const items = node.items
           .map((item) => {
             const checked = item.checked === true ? 'true' : 'false';
-            const inner = renderInlineNodes(item.children);
+            const inner = renderInlineNodes(item.children, styleMap);
             return `<li data-type="taskItem" data-checked="${checked}">${inner}</li>`;
           })
           .join('');
@@ -102,14 +113,14 @@ function renderContentNode(node: ContentNode): string {
       const tag = node.ordered ? 'ol' : 'ul';
       const idAttr = node.id != null ? ` data-block-id="${escapeHtml(node.id)}"` : '';
       const items = node.items
-        .map((item) => `<li>${renderInlineNodes(item.children)}</li>`)
+        .map((item) => `<li>${renderInlineNodes(item.children, styleMap)}</li>`)
         .join('');
       return `<${tag}${idAttr}>${items}</${tag}>`;
     }
 
     case 'BlockQuote': {
       const idAttr = node.id != null ? ` data-block-id="${escapeHtml(node.id)}"` : '';
-      const inner = renderContentNodes(node.children);
+      const inner = renderContentNodes(node.children, styleMap);
       return `<blockquote${idAttr}>${inner}</blockquote>`;
     }
 
@@ -163,8 +174,8 @@ function renderContentNode(node: ContentNode): string {
   }
 }
 
-function renderContentNodes(nodes: ContentNode[]): string {
-  return nodes.map(renderContentNode).join('');
+function renderContentNodes(nodes: ContentNode[], styleMap: Map<string, Record<string, string>>): string {
+  return nodes.map(n => renderContentNode(n, styleMap)).join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +188,18 @@ export async function mdxxToTiptap(
   await initWasm();
   const output = parseMdxx(raw);
 
-  const html = renderContentNodes(output.document.content);
+  const styleMap = new Map<string, Record<string, string>>();
+  for (const elem of output.document.styles.elements) {
+    const props: Record<string, string> = {};
+    for (const p of elem.properties) {
+      props[p.key] = p.value;
+    }
+    if (Object.keys(props).length > 0) {
+      styleMap.set(elem.id, props);
+    }
+  }
+
+  const html = renderContentNodes(output.document.content, styleMap);
 
   const comments: CommentData[] = output.document.styles.comments.map((def) => ({
     id: def.id,
