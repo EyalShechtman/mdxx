@@ -7,22 +7,28 @@ export interface Document {
   title: string;
   content: string;
   comments: CommentData[];
+  folder: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 interface DocumentsContextValue {
   documents: Document[];
+  folders: string[];
   activeSlug: string | null;
-  createDocument: (title: string, content?: string) => Document;
-  updateDocument: (slug: string, updates: Partial<Pick<Document, 'title' | 'content' | 'comments'>>) => void;
+  createDocument: (title: string, content?: string, folder?: string | null) => Document;
+  updateDocument: (slug: string, updates: Partial<Pick<Document, 'title' | 'content' | 'comments' | 'folder'>>) => void;
   deleteDocument: (slug: string) => void;
   getDocument: (slug: string) => Document | undefined;
+  createFolder: (name: string) => void;
+  renameFolder: (oldName: string, newName: string) => void;
+  deleteFolder: (name: string) => void;
 }
 
 const DocumentsContext = createContext<DocumentsContextValue | null>(null);
 
 const STORAGE_KEY = 'mdxx-documents';
+const FOLDERS_KEY = 'mdxx-folders';
 
 function slugify(title: string): string {
   return title
@@ -80,7 +86,11 @@ function loadDocuments(): Document[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const docs: Document[] = JSON.parse(raw);
+      // Migrate: add folder field if missing
+      return docs.map(d => ({ ...d, folder: d.folder ?? null }));
+    }
   } catch {}
   // Seed with sample document
   const now = new Date().toISOString();
@@ -97,6 +107,7 @@ function loadDocuments(): Document[] {
         resolved: false,
       },
     ],
+    folder: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -104,25 +115,41 @@ function loadDocuments(): Document[] {
   return [sample];
 }
 
+function loadFolders(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(FOLDERS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
 export function DocumentsProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [folders, setFoldersRaw] = useState<string[]>([]);
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
 
   useEffect(() => {
     setDocuments(loadDocuments());
+    setFoldersRaw(loadFolders());
   }, []);
 
   const persist = useCallback((docs: Document[]) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(docs));
   }, []);
 
-  const createDocument = useCallback((title: string, content?: string): Document => {
+  const persistFolders = useCallback((f: string[]) => {
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify(f));
+  }, []);
+
+  const createDocument = useCallback((title: string, content?: string, folder?: string | null): Document => {
     const now = new Date().toISOString();
     const doc: Document = {
       slug: '',
       title,
       content: content ?? DEFAULT_CONTENT.replace('Untitled Document', title),
       comments: [],
+      folder: folder ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -135,7 +162,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
     return doc;
   }, [persist]);
 
-  const updateDocument = useCallback((slug: string, updates: Partial<Pick<Document, 'title' | 'content' | 'comments'>>) => {
+  const updateDocument = useCallback((slug: string, updates: Partial<Pick<Document, 'title' | 'content' | 'comments' | 'folder'>>) => {
     setDocuments(prev => {
       const next = prev.map(d => {
         if (d.slug !== slug) return d;
@@ -158,8 +185,49 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
     return documents.find(d => d.slug === slug);
   }, [documents]);
 
+  const createFolder = useCallback((name: string) => {
+    setFoldersRaw(prev => {
+      if (prev.includes(name)) return prev;
+      const next = [...prev, name];
+      persistFolders(next);
+      return next;
+    });
+  }, [persistFolders]);
+
+  const renameFolder = useCallback((oldName: string, newName: string) => {
+    setFoldersRaw(prev => {
+      const next = prev.map(f => f === oldName ? newName : f);
+      persistFolders(next);
+      return next;
+    });
+    // Update all documents in this folder
+    setDocuments(prev => {
+      const next = prev.map(d => d.folder === oldName ? { ...d, folder: newName } : d);
+      persist(next);
+      return next;
+    });
+  }, [persist, persistFolders]);
+
+  const deleteFolder = useCallback((name: string) => {
+    setFoldersRaw(prev => {
+      const next = prev.filter(f => f !== name);
+      persistFolders(next);
+      return next;
+    });
+    // Move documents to root
+    setDocuments(prev => {
+      const next = prev.map(d => d.folder === name ? { ...d, folder: null } : d);
+      persist(next);
+      return next;
+    });
+  }, [persist, persistFolders]);
+
   return (
-    <DocumentsContext.Provider value={{ documents, activeSlug, createDocument, updateDocument, deleteDocument, getDocument }}>
+    <DocumentsContext.Provider value={{
+      documents, folders, activeSlug,
+      createDocument, updateDocument, deleteDocument, getDocument,
+      createFolder, renameFolder, deleteFolder,
+    }}>
       {children}
     </DocumentsContext.Provider>
   );

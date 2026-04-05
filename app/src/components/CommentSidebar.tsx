@@ -1,4 +1,5 @@
 'use client';
+import { useEffect, useRef } from 'react';
 import { type Editor } from '@tiptap/react';
 import { type CommentData } from '@/extensions/comment-mark';
 
@@ -6,12 +7,14 @@ interface CommentSidebarProps {
   editor: Editor | null;
   comments: CommentData[];
   commentTexts: Record<string, string>;
+  activeCommentId: string | null;
+  onSetActiveComment: (id: string | null) => void;
   onResolve: (id: string) => void;
   onDelete: (id: string) => void;
   onClose: () => void;
 }
 
-export function CommentSidebar({ editor, comments, commentTexts, onResolve, onDelete, onClose }: CommentSidebarProps) {
+export function CommentSidebar({ editor, comments, commentTexts, activeCommentId, onSetActiveComment, onResolve, onDelete, onClose }: CommentSidebarProps) {
   const activeComments = comments.filter(c => !c.resolved);
   const resolvedComments = comments.filter(c => c.resolved);
 
@@ -28,6 +31,7 @@ export function CommentSidebar({ editor, comments, commentTexts, onResolve, onDe
         }
       });
     });
+    onSetActiveComment(commentId);
   };
 
   return (
@@ -60,6 +64,7 @@ export function CommentSidebar({ editor, comments, commentTexts, onResolve, onDe
                 key={comment.id}
                 comment={comment}
                 quotedText={commentTexts[comment.id]}
+                isActive={activeCommentId === comment.id}
                 onResolve={onResolve}
                 onDelete={onDelete}
                 onClick={() => scrollToComment(comment.id)}
@@ -78,6 +83,7 @@ export function CommentSidebar({ editor, comments, commentTexts, onResolve, onDe
                 key={comment.id}
                 comment={comment}
                 quotedText={commentTexts[comment.id]}
+                isActive={activeCommentId === comment.id}
                 onResolve={onResolve}
                 onDelete={onDelete}
                 onClick={() => scrollToComment(comment.id)}
@@ -94,6 +100,7 @@ export function CommentSidebar({ editor, comments, commentTexts, onResolve, onDe
 function CommentCard({
   comment,
   quotedText,
+  isActive,
   onResolve,
   onDelete,
   onClick,
@@ -101,19 +108,33 @@ function CommentCard({
 }: {
   comment: CommentData;
   quotedText?: string;
+  isActive: boolean;
   onResolve: (id: string) => void;
   onDelete: (id: string) => void;
   onClick: () => void;
   resolved?: boolean;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isActive && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [isActive]);
+
   return (
     <div
+      ref={cardRef}
       onClick={onClick}
       className={`
         rounded-lg border p-3 mb-2 cursor-pointer transition-all
         ${resolved
-          ? 'bg-gray-100 border-gray-200 opacity-60 hover:opacity-80'
-          : 'bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm'
+          ? isActive
+            ? 'bg-white border-blue-400 opacity-80 shadow-sm'
+            : 'bg-gray-100 border-gray-200 opacity-60 hover:opacity-80'
+          : isActive
+            ? 'bg-white border-blue-500 shadow-md ring-1 ring-blue-200'
+            : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
         }
       `}
     >

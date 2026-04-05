@@ -125,22 +125,24 @@ interface EditorProps {
 }
 
 export function Editor({ initialContent, initialComments, onChange, onCommentsChange, onTitleChange }: EditorProps) {
-  const [comments, setCommentsRaw] = useState<CommentData[]>(initialComments ?? []);
+  const [comments, setComments] = useState<CommentData[]>(initialComments ?? []);
   const onCommentsChangeRef = useRef(onCommentsChange);
   onCommentsChangeRef.current = onCommentsChange;
-  const setComments: typeof setCommentsRaw = useCallback((action) => {
-    setCommentsRaw((prev) => {
-      const next = typeof action === 'function' ? action(prev) : action;
-      onCommentsChangeRef.current?.(next);
-      return next;
-    });
-  }, []);
+  const commentsInitializedRef = useRef(false);
+  useEffect(() => {
+    if (!commentsInitializedRef.current) {
+      commentsInitializedRef.current = true;
+      return;
+    }
+    onCommentsChangeRef.current?.(comments);
+  }, [comments]);
   const [showComments, setShowComments] = useState(false);
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [markdownSource, setMarkdownSource] = useState('');
   const [showCommentDialog, setShowCommentDialog] = useState(false);
   const [showStyleDialog, setShowStyleDialog] = useState(false);
   const [showBlockIdDialog, setShowBlockIdDialog] = useState(false);
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -189,6 +191,19 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
     editorProps: {
       attributes: {
         class: 'mdxx-editor-content outline-none',
+      },
+      handleClick: (view, pos) => {
+        const resolved = view.state.doc.resolve(pos);
+        const marks = resolved.marks();
+        const commentMark = marks.find(m => m.type.name === 'comment');
+        if (commentMark) {
+          const id = commentMark.attrs.commentId;
+          setActiveCommentId(id);
+          setShowComments(true);
+        } else {
+          setActiveCommentId(null);
+        }
+        return false;
       },
     },
   });
@@ -369,6 +384,28 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
     return texts;
   }, [editor]);
 
+  // Sync active comment highlight classes on the DOM
+  const editorWrapperRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const wrapper = editorWrapperRef.current;
+    if (!wrapper) return;
+
+    // Toggle the parent class
+    wrapper.classList.toggle('has-active-comment', !!activeCommentId);
+
+    // Remove previous active markers
+    wrapper.querySelectorAll('.comment-active').forEach(el => {
+      el.classList.remove('comment-active');
+    });
+
+    // Add active class to matching comment spans
+    if (activeCommentId) {
+      wrapper.querySelectorAll(`[data-comment-id="${activeCommentId}"]`).forEach(el => {
+        el.classList.add('comment-active');
+      });
+    }
+  }, [activeCommentId]);
+
   const commentTexts = getCommentTexts();
   const activeCommentCount = comments.filter(c => !c.resolved).length;
 
@@ -386,7 +423,10 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
           commentCount={activeCommentCount}
         />
         <div className="flex-1 overflow-auto">
-          <div className="max-w-4xl mx-auto px-12 py-8 min-h-full">
+          <div
+            ref={editorWrapperRef}
+            className="max-w-4xl mx-auto px-12 py-8 min-h-full"
+          >
             <EditorContent editor={editor} />
           </div>
         </div>
@@ -403,6 +443,8 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
           editor={editor}
           comments={comments}
           commentTexts={commentTexts}
+          activeCommentId={activeCommentId}
+          onSetActiveComment={setActiveCommentId}
           onResolve={handleResolveComment}
           onDelete={handleDeleteComment}
           onClose={() => setShowComments(false)}
