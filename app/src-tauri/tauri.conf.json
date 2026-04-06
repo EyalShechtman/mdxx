@@ -50,6 +50,15 @@
         "mimeType": "text/markdown",
         "role": "Editor"
       }
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFFMDEwRDIwRTZGREJGNTAKUldSUXYvM21JQTBCcnZrNkNqZnJwaHpXaCtFQzhwcm5mT3BEdC96YmpmQU05Ry8yOE15cllrZlYK",
+      "endpoints": [
+        "https://github.com/EyalShechtman/mdxx/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
