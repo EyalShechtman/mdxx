@@ -35,20 +35,17 @@ An mdxx file has 3 sections separated by a line of 40+ dashes.
 <section1 name="Content">
 Standard CommonMark markdown with these extensions:
 
-<block-ids>
-Append ~id at the end of any block line to target it for styling in Section 2.
-Use lowercase-kebab-case.
+<styling>
+All style IDs are auto-generated hashes (e.g. s-1lck6yy). Do not rename them.
 
-  ## Revenue Overview ~section-revenue
-  Some paragraph text ~intro-paragraph
-</block-ids>
+Inline styles wrap text: [text]{~s-1lck6yy}
+Block styles append to the end of a line: Paragraph text ~s-1lck6yy
 
-<inline-styles>
-Wrap text with [text]{~id} to apply a style from Section 2.
-IDs are auto-generated hashes (e.g. s-1lck6yy). Do not rename them.
+  [important words]{~s-1lck6yy} in a sentence.
+  A centered paragraph ~s-abc123
 
-  This has [important words]{~s-1lck6yy} in it.
-</inline-styles>
+Style properties are defined in Section 2 under @id { ... }.
+</styling>
 
 <comments>
 Wrap text with {{id}}...{{/id}} to attach a comment defined in Section 2.
@@ -67,28 +64,20 @@ code, links, images, blockquotes, lists, task lists, tables, horizontal rules.
 <section2 name="Styles & Metadata">
 All styling and metadata lives here. Blocks use the syntax: @id { key: value; }
 
-<inline-styles>
-Auto-generated when the user formats text (font, size, color).
-Same properties always produce the same hash ID.
+<styles>
+Auto-generated when the user formats text (font, size, color, alignment).
+Same properties always produce the same hash ID. Used for both inline
+spans and block-level styling.
 
   @s-1lck6yy {
     font-family: "Times New Roman";
     font-size: 10pt;
   }
-  @s-z8gkvb {
-    color: #e63946;
-  }
-</inline-styles>
-
-<block-styles>
-Target blocks tagged with ~id in Section 1.
-
-  @section-revenue {
+  @s-abc123 {
     font-size: 24pt;
-    color: #1a1a2e;
-    margin-bottom: 12pt;
+    text-align: center;
   }
-</block-styles>
+</styles>
 
 <comment-definitions>
   @comment:c1 {
@@ -147,11 +136,10 @@ This section (the one you're reading) is for AI/agent context. Never rendered.
 <rules>
 - Content goes in Section 1 only. Styles go in Section 2 only. Never mix them.
 - Section separators are 40+ dashes on their own line.
-- Block IDs: user-created, lowercase-kebab-case (e.g. ~section-revenue).
-- Inline style IDs: auto-generated hashes (e.g. s-1lck6yy). Do not rename or merge them.
-- To style a block: add ~id in Section 1, add @id { props } in Section 2.
-- To style inline text: wrap with [text]{~id} in Section 1, add @id { props } in Section 2.
-- To add a comment: wrap with {{id}}...{{/id}} in Section 1, add @comment:id { ... } in Section 2.
+- All style IDs are auto-generated hashes (e.g. s-1lck6yy). Do not rename or merge them.
+- Inline text styling: [text]{~id} in Section 1, @id { props } in Section 2.
+- Block-level styling (alignment etc.): ~id at end of line in Section 1, @id { props } in Section 2.
+- Comments: {{id}}...{{/id}} in Section 1, @comment:id { ... } in Section 2.
 </rules>
 </mdxx-format>`;
 
