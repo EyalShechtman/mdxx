@@ -102,6 +102,24 @@ function serializeNodes(nodes: NodeListOf<ChildNode>, ctx: SerializationContext)
   return parts.join('');
 }
 
+function extractBlockStyleProps(el: HTMLElement): Record<string, string> {
+  const props: Record<string, string> = {};
+  const textAlign = el.style.textAlign;
+  if (textAlign && textAlign !== 'left') props['text-align'] = textAlign;
+  return props;
+}
+
+function blockIdSuffix(el: HTMLElement, ctx: SerializationContext): string {
+  const userBlockId = el.getAttribute('data-block-id');
+  if (userBlockId) return ` ~${userBlockId}`;
+  const blockProps = extractBlockStyleProps(el);
+  if (Object.keys(blockProps).length > 0) {
+    const id = ctx.getStyleId(blockProps);
+    return ` ~${id}`;
+  }
+  return '';
+}
+
 function serializeNode(node: ChildNode, ctx: SerializationContext): string {
   if (node.nodeType === Node.TEXT_NODE) {
     return node.textContent ?? '';
@@ -110,8 +128,7 @@ function serializeNode(node: ChildNode, ctx: SerializationContext): string {
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
   const el = node as HTMLElement;
   const tag = el.tagName.toLowerCase();
-  const blockId = el.getAttribute('data-block-id');
-  const idSuffix = blockId ? ` ~${blockId}` : '';
+  const idSuffix = blockIdSuffix(el, ctx);
 
   switch (tag) {
     case 'h1': return `# ${inlineContent(el, ctx)}${idSuffix}\n\n`;

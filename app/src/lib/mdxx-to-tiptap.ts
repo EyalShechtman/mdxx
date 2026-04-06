@@ -85,19 +85,30 @@ function alignmentToStyle(alignment: Alignment): string {
 // Content node rendering
 // ---------------------------------------------------------------------------
 
+function blockStyleAttr(id: string | undefined | null, styleMap: Map<string, Record<string, string>>): string {
+  if (!id) return '';
+  const props = styleMap.get(id);
+  if (!props) return '';
+  const parts: string[] = [];
+  if (props['text-align']) parts.push(`text-align: ${props['text-align']}`);
+  return parts.length > 0 ? ` style="${parts.join('; ')}"` : '';
+}
+
 function renderContentNode(node: ContentNode, styleMap: Map<string, Record<string, string>>): string {
   switch (node.type) {
     case 'Heading': {
       const tag = `h${node.level}`;
       const idAttr = node.id != null ? ` data-block-id="${escapeHtml(node.id)}"` : '';
+      const style = blockStyleAttr(node.id, styleMap);
       const inner = renderInlineNodes(node.children, styleMap);
-      return `<${tag}${idAttr}>${inner}</${tag}>`;
+      return `<${tag}${idAttr}${style}>${inner}</${tag}>`;
     }
 
     case 'Paragraph': {
       const idAttr = node.id != null ? ` data-block-id="${escapeHtml(node.id)}"` : '';
+      const style = blockStyleAttr(node.id, styleMap);
       const inner = renderInlineNodes(node.children, styleMap);
-      return `<p${idAttr}>${inner}</p>`;
+      return `<p${idAttr}${style}>${inner}</p>`;
     }
 
     case 'Image': {
