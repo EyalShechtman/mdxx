@@ -37,17 +37,25 @@ function renderInlineNode(node: InlineNode, styleMap: Map<string, Record<string,
     case 'CommentAnchor':
       return `<span data-comment-id="${escapeHtml(node.id)}">${renderInlineNodes(node.children, styleMap)}</span>`;
     case 'StyledSpan': {
+      // Flatten double-nested styled spans with the same ID: [[text]{~id}]{~id} → [text]{~id}
+      let children = node.children;
+      if (
+        children.length === 1 &&
+        children[0].type === 'StyledSpan' &&
+        children[0].id === node.id
+      ) {
+        children = children[0].children;
+      }
       const props = styleMap.get(node.id);
       let styleAttr = '';
       if (props) {
         const parts: string[] = [];
-        const fontFamily = props['font-family'];
-        const fontSize = props['font-size'];
-        if (fontFamily) parts.push(`font-family: ${fontFamily}`);
-        if (fontSize) parts.push(`font-size: ${fontSize}`);
+        for (const [key, value] of Object.entries(props)) {
+          if (value) parts.push(`${key}: ${value}`);
+        }
         if (parts.length > 0) styleAttr = ` style="${parts.join('; ')}"`;
       }
-      return `<span data-style-id="${escapeHtml(node.id)}"${styleAttr}>${renderInlineNodes(node.children, styleMap)}</span>`;
+      return `<span data-style-id="${escapeHtml(node.id)}"${styleAttr}>${renderInlineNodes(children, styleMap)}</span>`;
     }
     case 'Strikethrough':
       return `<s>${renderInlineNodes(node.children, styleMap)}</s>`;
@@ -184,7 +192,7 @@ function renderContentNodes(nodes: ContentNode[], styleMap: Map<string, Record<s
 
 export async function mdxxToTiptap(
   raw: string,
-): Promise<{ html: string; comments: CommentData[] }> {
+): Promise<{ html: string; comments: CommentData[]; elementStyles: Record<string, Record<string, string>>; agentInstructions: string | null; chatHistory: string | null }> {
   await initWasm();
   const output = parseMdxx(raw);
 
@@ -216,5 +224,17 @@ export async function mdxxToTiptap(
     })),
   }));
 
-  return { html, comments };
+  // Convert styleMap to plain object for the caller
+  const elementStyles: Record<string, Record<string, string>> = {};
+  for (const [id, props] of styleMap) {
+    elementStyles[id] = props;
+  }
+
+  return {
+    html,
+    comments,
+    elementStyles,
+    agentInstructions: output.document.agent_instructions ?? null,
+    chatHistory: output.document.chat_history ?? null,
+  };
 }

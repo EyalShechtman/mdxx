@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from 'react';
 import type { CommentData } from '@/extensions/comment-mark';
+import type { ChatMessage } from '@/lib/chat-types';
+import { parseChatHistory } from '@/lib/chat-types';
 import {
   readFile,
   writeFile,
@@ -30,7 +32,10 @@ export interface OpenFile {
   title: string;
   content: string;
   comments: CommentData[];
+  elementStyles?: Record<string, Record<string, string>>;
   isDirty: boolean;
+  agentInstructions: string | null;
+  chatHistory: ChatMessage[];
 }
 
 interface FileContextValue {
@@ -45,6 +50,7 @@ interface FileContextValue {
   importMdFile: (path: string) => Promise<void>;
   updateContent: (html: string) => void;
   updateComments: (comments: CommentData[]) => void;
+  updateChatHistory: (chatHistory: ChatMessage[]) => void;
   updateTitle: (title: string) => void;
   setActiveIndex: (index: number) => void;
   setBuildMdxx: (fn: () => string) => void;
@@ -118,7 +124,7 @@ export function FileProvider({ children }: { children: ReactNode }) {
     }
 
     const raw = await readFile(path);
-    const { html, comments } = await mdxxToTiptap(raw);
+    const { html, comments, elementStyles, agentInstructions, chatHistory } = await mdxxToTiptap(raw);
     const title = titleFromPath(path);
 
     setOpenFiles((prev) => {
@@ -128,7 +134,16 @@ export function FileProvider({ children }: { children: ReactNode }) {
         setActiveIndex(existingIdx);
         return prev;
       }
-      const newFile: OpenFile = { path, title, content: html, comments, isDirty: false };
+      const newFile: OpenFile = {
+        path,
+        title,
+        content: html,
+        comments,
+        elementStyles,
+        isDirty: false,
+        agentInstructions: agentInstructions,
+        chatHistory: chatHistory ? parseChatHistory(chatHistory) : [],
+      };
       const next = [...prev, newFile];
       setActiveIndex(next.length - 1);
       return next;
@@ -184,6 +199,8 @@ export function FileProvider({ children }: { children: ReactNode }) {
       content: DEFAULT_CONTENT,
       comments: [],
       isDirty: false,
+      agentInstructions: null,
+      chatHistory: [],
     };
     setOpenFiles((prev) => {
       const next = [...prev, newFile];
@@ -207,6 +224,8 @@ export function FileProvider({ children }: { children: ReactNode }) {
       content: html,
       comments: [],
       isDirty: true,
+      agentInstructions: null,
+      chatHistory: [],
     };
     setOpenFiles((prev) => {
       const next = [...prev, newFile];
@@ -268,6 +287,15 @@ export function FileProvider({ children }: { children: ReactNode }) {
     [activeIndex],
   );
 
+  const updateChatHistory = useCallback(
+    (chatHistory: ChatMessage[]) => {
+      setOpenFiles((prev) =>
+        prev.map((f, i) => (i === activeIndex ? { ...f, chatHistory, isDirty: true } : f)),
+      );
+    },
+    [activeIndex],
+  );
+
   const updateTitle = useCallback(
     (title: string) => {
       setOpenFiles((prev) =>
@@ -324,6 +352,7 @@ export function FileProvider({ children }: { children: ReactNode }) {
         importMdFile,
         updateContent,
         updateComments,
+        updateChatHistory,
         updateTitle,
         setActiveIndex,
         setBuildMdxx,

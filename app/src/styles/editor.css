@@ -297,17 +297,7 @@
   background: rgba(255, 193, 7, 0.55);
 }
 
-/* Styled spans */
-.mdxx-styled-span {
-  background: rgba(99, 102, 241, 0.1);
-  border-bottom: 2px solid #6366f1;
-  padding: 1px 0;
-  transition: background 0.15s;
-}
-
-.mdxx-styled-span:hover {
-  background: rgba(99, 102, 241, 0.2);
-}
+/* Styled spans — no visual indicator, just carries the style */
 
 /* Block ID indicator */
 [data-block-id]::after {

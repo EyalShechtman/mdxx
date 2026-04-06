@@ -17,206 +17,164 @@ import { StyledSpan } from '@/extensions/styled-span';
 import { BlockId } from '@/extensions/block-id';
 import { Toolbar } from './Toolbar';
 import { CommentSidebar } from './CommentSidebar';
+import { ClaudeSidebar } from './ClaudeSidebar';
 import { CommentDialog } from './CommentDialog';
-import { StyleDialog } from './StyleDialog';
 import { BlockIdDialog } from './BlockIdDialog';
 import { MarkdownPanel } from './MarkdownPanel';
 import { ZoomStatusBar } from './ZoomStatusBar';
 import { CommentPopover } from './CommentPopover';
+import { SettingsDialog } from './SettingsDialog';
 import { htmlToMdxx } from '@/lib/html-to-mdxx';
+import { sendMessage, parseStructuredResponse, type ClaudeConfig } from '@/lib/claude-api';
+import { loadClaudeSettings, saveClaudeSettings } from '@/lib/claude-settings';
+import type { ChatMessage } from '@/lib/chat-types';
+import { serializeChatHistory } from '@/lib/chat-types';
 
-const AGENT_INSTRUCTIONS = `# mdxx Document Format
+const AGENT_INSTRUCTIONS = `<mdxx-format>
+An mdxx file has 3 sections separated by a line of 40+ dashes.
 
-This is an mdxx file. It has 3 sections separated by lines of 40+ dashes.
-
-## Section 1: Content (Markdown)
-
+<section1 name="Content">
 Standard CommonMark markdown with these extensions:
 
-### Block IDs
-Append \`~id\` at the end of any block line to tag it for styling.
-\`\`\`
-## Revenue Overview ~section-revenue
-Some paragraph text ~intro-paragraph
-![Chart](chart.png) ~chart1
-\`\`\`
-Use lowercase-kebab-case for all IDs.
+<block-ids>
+Append ~id at the end of any block line to target it for styling in Section 2.
+Use lowercase-kebab-case.
 
-### Comment Anchors
-Wrap inline text with \`{{commentId}}...{{/commentId}}\` to attach a comment.
-\`\`\`
-The {{c1}}enterprise segment{{/c1}} showed strong growth.
-\`\`\`
-The comment's metadata (author, text, date) is defined in Section 2 using \`@comment:id\`.
+  ## Revenue Overview ~section-revenue
+  Some paragraph text ~intro-paragraph
+</block-ids>
 
-### Styled Spans
-Wrap inline text with \`[text]{~styleId}\` to apply a named style.
-\`\`\`
-Our [cloud platform]{~emphasis} continues to grow.
-\`\`\`
-The style's properties are defined in Section 2.
+<inline-styles>
+Wrap text with [text]{~id} to apply a style from Section 2.
+IDs are auto-generated hashes (e.g. s-1lck6yy). Do not rename them.
 
-### Page Breaks
-Insert \`{{pagebreak}}\` on its own line to force a page break.
+  This has [important words]{~s-1lck6yy} in it.
+</inline-styles>
 
-### Other Markdown
-All standard CommonMark is supported: headings (#-####), bold (**), italic (*),
-strikethrough (~~), inline code (\\\`), code blocks (\\\`\\\`\\\`lang), links [text](url),
-images ![alt](src), blockquotes (>), bullet lists (-), ordered lists (1.),
-task lists (- [x]), tables (| col |), and horizontal rules (***).
+<comments>
+Wrap text with {{id}}...{{/id}} to attach a comment defined in Section 2.
 
-## Section 2: Styles & Metadata
+  The {{c1}}enterprise segment{{/c1}} showed strong growth.
+</comments>
 
-Define styles and metadata using \`@blockname { key: value; }\` blocks.
-Properties are separated by semicolons. String values use quotes.
+<page-breaks>
+Insert {{pagebreak}} on its own line to force a page break.
+</page-breaks>
 
-### Comment Definitions
-\`\`\`
-@comment:c1 {
-  author: "Igor";
-  date: "2026-03-29";
-  text: "Can we break this down by sub-segment?";
-  resolved: false;
-}
-\`\`\`
+All standard CommonMark is supported: headings, bold, italic, strikethrough,
+code, links, images, blockquotes, lists, task lists, tables, horizontal rules.
+</section1>
 
-### Element Styles
-Applied to blocks tagged with \`~id\` or inline spans with \`[text]{~id}\`.
-\`\`\`
-@section-revenue {
-  font-size: 24pt;
-  color: #1a1a2e;
-  margin-bottom: 12pt;
-}
-@emphasis {
-  font-weight: 700;
-  color: #e63946;
-  background: #fff0f0;
-}
-\`\`\`
+<section2 name="Styles & Metadata">
+All styling and metadata lives here. Blocks use the syntax: @id { key: value; }
 
-### Abstract Blocks & Inheritance
-Define reusable style bases with \`@.name\`, then inherit with \`inherit: .name\`.
-\`\`\`
-@.heading-base {
-  font-family: "Inter";
-  font-weight: 700;
-  color: #1a1a1a;
-}
-@title {
-  inherit: .heading-base;
-  font-size: 32pt;
-  color: #0a0a0a;
-}
-\`\`\`
-The element's own properties override inherited ones.
+<inline-styles>
+Auto-generated when the user formats text (font, size, color).
+Same properties always produce the same hash ID.
 
-### Page Layout
-\`\`\`
-@page {
-  size: letter;
-  orientation: portrait;
-  margin: 1in;
-  columns: 2;
-  column-gap: 24pt;
-}
-\`\`\`
-Page properties: \`size\` (letter, a4, a5), \`orientation\` (portrait, landscape),
-\`margin\` / \`margin-top\` / \`margin-bottom\` / \`margin-left\` / \`margin-right\`,
-\`columns\` (number), \`column-gap\`.
+  @s-1lck6yy {
+    font-family: "Times New Roman";
+    font-size: 10pt;
+  }
+  @s-z8gkvb {
+    color: #e63946;
+  }
+</inline-styles>
 
-### Header & Footer
-Repeated on every page. Use \`{{page}}\` and \`{{pages}}\` for page numbers.
-\`\`\`
-@header {
-  content: "Report — Confidential";
-  font-size: 8pt;
-  color: #999999;
-  align: right;
-  border-bottom: 1px solid #cccccc;
-}
-@footer {
-  content: "Page {{page}} of {{pages}}";
-  font-size: 8pt;
-  align: center;
-}
-\`\`\`
-Properties: \`content\`, \`font-size\`, \`color\`, \`align\`, \`border-bottom\`, \`border-top\`.
+<block-styles>
+Target blocks tagged with ~id in Section 1.
 
-### Document Defaults
-Base styles inherited by all elements.
-\`\`\`
-@defaults {
-  font-family: "Inter";
-  font-size: 11pt;
-  color: #1a1a1a;
-  line-height: 1.6;
-  heading-font-family: "Inter";
-  heading-color: #1a1a1a;
-  heading-1-size: 26pt;
-  heading-2-size: 20pt;
-  heading-3-size: 16pt;
-  link-color: #0066cc;
-  code-font-family: "Fira Code";
-  code-font-size: 10pt;
-}
-\`\`\`
+  @section-revenue {
+    font-size: 24pt;
+    color: #1a1a2e;
+    margin-bottom: 12pt;
+  }
+</block-styles>
 
-### Properties Reference
+<comment-definitions>
+  @comment:c1 {
+    author: "Igor";
+    date: "2026-03-29";
+    text: "Can we break this down by sub-segment?";
+  }
+</comment-definitions>
 
-**Typography** (any element):
-font-family, font-size, font-weight, font-style, color, background,
-text-align (or align), text-transform, text-decoration, letter-spacing, line-height.
+<inheritance>
+Define reusable bases with @.name, then inherit.
 
-**Spacing & Borders** (any element):
-margin, margin-top/bottom/left/right, padding, padding-top/bottom/left/right,
-border, border-top/bottom/left/right, border-radius, shadow, width, max-width.
+  @.heading-base { font-family: "Inter"; font-weight: 700; }
+  @title { inherit: .heading-base; font-size: 32pt; }
+</inheritance>
 
-**Image-specific** (\`![alt](src) ~id\`):
-width, max-width, height, align (left/center/right), object-fit (cover/contain/fill),
-caption ("quoted text"), caption-font-size, caption-color,
-border, border-radius, shadow, margin.
+<page-layout>
+  @page { size: letter; margin: 1in; columns: 2; column-gap: 24pt; }
 
-**Table-specific** (table tagged with \`~id\`):
-border-style (minimal/full/none), header-bg, header-font-weight,
-cell-padding, stripe (alternating row color), column-widths (e.g. "25% 25% 25% 25%").
+Properties: size (letter/a4/a5), orientation (portrait/landscape),
+margin, columns, column-gap.
+</page-layout>
 
-**List-specific** (list tagged with \`~id\`):
-list-style (disc/decimal/none), indent, item-spacing.
+<header-footer>
+  @header { content: "Report"; font-size: 8pt; align: right; }
+  @footer { content: "Page {{page}} of {{pages}}"; font-size: 8pt; align: center; }
+</header-footer>
 
-**Code block-specific** (code block tagged with \`~id\`):
-line-numbers (true/false), highlight-lines ("3-5 8"), theme (dark/light).
+<defaults>
+Base styles for the whole document.
 
-## Section 3: Agent Instructions (this section)
+  @defaults {
+    font-family: "Inter";
+    font-size: 11pt;
+    color: #1a1a1a;
+    line-height: 1.6;
+  }
+</defaults>
 
-This section is for AI/agent context. It is never rendered.
-Put any instructions here that help an AI understand and edit this document.
+<properties>
+Typography: font-family, font-size, font-weight, font-style, color, background,
+  text-align, text-transform, text-decoration, letter-spacing, line-height.
+Spacing: margin(-top/bottom/left/right), padding(-top/bottom/left/right),
+  border(-top/bottom/left/right), border-radius, shadow, width, max-width.
+Images: width, height, align, object-fit, caption, border, border-radius, shadow.
+Tables: border-style, header-bg, cell-padding, stripe, column-widths.
+Lists: list-style, indent, item-spacing.
+Code: line-numbers, highlight-lines, theme.
+</properties>
+</section2>
 
-## How to Edit This Document
+<section3 name="Agent Instructions">
+This section (the one you're reading) is for AI/agent context. Never rendered.
+</section3>
 
-- To change content: edit Section 1 using standard Markdown
-- To style a block: add \`~id\` to end of line in Section 1, add \`@id { props }\` in Section 2
-- To style inline text: wrap with \`[text]{~id}\` in Section 1, add \`@id { props }\` in Section 2
-- To add a comment: wrap text with \`{{id}}...{{/id}}\` in Section 1, add \`@comment:id { ... }\` in Section 2
-- To add a page break: insert \`{{pagebreak}}\` on its own line
-- To reuse styles: define \`@.base { ... }\` then use \`inherit: .base\` in element blocks
-- To control layout: edit the \`@page { ... }\` block (columns, margins, size)
-- Section separators must be 40+ dashes on their own line
-- Never put styling in Section 1. Never put content in Section 2.
-`;
+<rules>
+- Content goes in Section 1 only. Styles go in Section 2 only. Never mix them.
+- Section separators are 40+ dashes on their own line.
+- Block IDs: user-created, lowercase-kebab-case (e.g. ~section-revenue).
+- Inline style IDs: auto-generated hashes (e.g. s-1lck6yy). Do not rename or merge them.
+- To style a block: add ~id in Section 1, add @id { props } in Section 2.
+- To style inline text: wrap with [text]{~id} in Section 1, add @id { props } in Section 2.
+- To add a comment: wrap with {{id}}...{{/id}} in Section 1, add @comment:id { ... } in Section 2.
+</rules>
+</mdxx-format>`;
 
 interface EditorProps {
   initialContent: string;
   initialComments?: CommentData[];
+  initialElementStyles?: Record<string, Record<string, string>>;
+  agentInstructions?: string | null;
+  chatHistory?: ChatMessage[];
   onChange: (html: string) => void;
   onCommentsChange?: (comments: CommentData[]) => void;
+  onChatHistoryChange?: (messages: ChatMessage[]) => void;
   onTitleChange?: (title: string) => void;
   onSave?: () => void;
   onBuildMdxx?: (fn: () => string) => void;
 }
 
-export function Editor({ initialContent, initialComments, onChange, onCommentsChange, onTitleChange, onSave, onBuildMdxx }: EditorProps) {
+export function Editor({ initialContent, initialComments, initialElementStyles, agentInstructions, chatHistory, onChange, onCommentsChange, onChatHistoryChange, onTitleChange, onSave, onBuildMdxx }: EditorProps) {
   const [comments, setComments] = useState<CommentData[]>(initialComments ?? []);
+  const elementStylesRef = useRef<Record<string, Record<string, string>>>(initialElementStyles ?? {});
+  const agentInstructionsRef = useRef<string>(agentInstructions ?? AGENT_INSTRUCTIONS);
+  const chatHistoryRef = useRef<ChatMessage[]>(chatHistory ?? []);
   const onCommentsChangeRef = useRef(onCommentsChange);
   onCommentsChangeRef.current = onCommentsChange;
   const commentsInitializedRef = useRef(false);
@@ -227,11 +185,21 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
     }
     onCommentsChangeRef.current?.(comments);
   }, [comments]);
-  const [showComments, setShowComments] = useState(false);
+
+  const [rightPanel, setRightPanel] = useState<'claude' | 'comments' | null>(null);
+  const [claudeLoading, setClaudeLoading] = useState(false);
+  const [claudeConfig, setClaudeConfig] = useState<ClaudeConfig | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Load Claude settings on mount
+  useEffect(() => {
+    loadClaudeSettings().then(config => {
+      if (config) setClaudeConfig(config);
+    });
+  }, []);
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [markdownSource, setMarkdownSource] = useState('');
   const [showCommentDialog, setShowCommentDialog] = useState(false);
-  const [showStyleDialog, setShowStyleDialog] = useState(false);
   const [showBlockIdDialog, setShowBlockIdDialog] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
@@ -296,7 +264,7 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
         if (commentMark) {
           const id = commentMark.attrs.commentId;
           setActiveCommentId(id);
-          setShowComments(true);
+          setRightPanel('comments');
         } else {
           setActiveCommentId(null);
         }
@@ -314,58 +282,43 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
     // Collect comment definitions
     for (const c of comments) {
       styleLines.push(`@comment:${c.id} {`);
-      styleLines.push(`  author: "${c.author}"`);
-      styleLines.push(`  date: "${c.date}"`);
-      if (c.resolved) styleLines.push(`  resolved: true`);
-      if (c.editedAt) styleLines.push(`  edited-at: "${c.editedAt}"`);
-      styleLines.push(`  text: "${c.text}"`);
+      styleLines.push(`  author: "${c.author}";`);
+      styleLines.push(`  date: "${c.date}";`);
+      if (c.resolved) styleLines.push(`  resolved: true;`);
+      if (c.editedAt) styleLines.push(`  edited-at: "${c.editedAt}";`);
+      styleLines.push(`  text: "${c.text}";`);
       if (c.replies) {
         for (const r of c.replies) {
-          styleLines.push(`  reply:${r.id}.author: "${r.author}"`);
-          styleLines.push(`  reply:${r.id}.date: "${r.date}"`);
-          styleLines.push(`  reply:${r.id}.text: "${r.text}"`);
+          styleLines.push(`  reply:${r.id}.author: "${r.author}";`);
+          styleLines.push(`  reply:${r.id}.date: "${r.date}";`);
+          styleLines.push(`  reply:${r.id}.text: "${r.text}";`);
         }
       }
       styleLines.push(`}`);
       styleLines.push('');
     }
 
-    // Collect style IDs from the editor
-    const styleIds = new Set<string>();
-    if (editor) {
-      editor.state.doc.descendants((node) => {
-        node.marks.forEach(mark => {
-          if (mark.type.name === 'styledSpan' && mark.attrs.styleId) {
-            styleIds.add(mark.attrs.styleId);
-          }
-        });
-      });
-      for (const id of styleIds) {
-        styleLines.push(`@${id} {`);
-        styleLines.push(`  /* custom styles */`);
-        styleLines.push(`}`);
-        styleLines.push('');
-      }
-    }
-
-    // Generate style blocks for auto-generated inline styles (font/size)
+    // Generate style blocks for inline styles (font/size/color)
     for (const entry of inlineStyles) {
-      // Skip if already covered by a user-named style
-      if (!styleIds.has(entry.id)) {
-        styleLines.push(`@${entry.id} {`);
-        for (const [key, value] of Object.entries(entry.properties)) {
-          styleLines.push(`  ${key}: ${value};`);
-        }
-        styleLines.push(`}`);
-        styleLines.push('');
+      styleLines.push(`@${entry.id} {`);
+      for (const [key, value] of Object.entries(entry.properties)) {
+        styleLines.push(`  ${key}: ${value};`);
       }
+      styleLines.push(`}`);
+      styleLines.push('');
     }
 
     const separator = '----------------------------------------';
     const section2 = styleLines.length > 0 ? styleLines.join('\n') : '';
-    const section3 = AGENT_INSTRUCTIONS;
+    const section3 = agentInstructionsRef.current;
+    const chatMessages = chatHistoryRef.current;
+    const section4 = chatMessages.length > 0 ? serializeChatHistory(chatMessages) : '';
 
-    return `${content.trimEnd()}\n\n${separator}\n\n${section2}${separator}\n\n${section3}`;
+    let result = `${content.trimEnd()}\n\n${separator}\n\n${section2}${separator}\n\n${section3}`;
+    if (section4) {
+      result += `\n\n${separator}\n\n${section4}`;
+    }
+    return result;
   }, [comments, editor]);
 
   const updateMarkdownSource = useCallback((html: string) => {
@@ -399,7 +352,7 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
     editor.commands.setComment(id);
     setComments(prev => [...prev, newComment]);
     setShowCommentDialog(false);
-    setShowComments(true);
+    setRightPanel('comments');
   }, [editor, nextCommentId]);
 
   const handleResolveComment = useCallback((id: string) => {
@@ -452,19 +405,9 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
     setHoveredComment(null);
     setPopoverPosition(null);
     setActiveCommentId(commentId);
-    setShowComments(true);
+    setRightPanel('comments');
   }, []);
 
-  const handleAddStyle = useCallback(() => {
-    if (!editor || editor.state.selection.empty) return;
-    setShowStyleDialog(true);
-  }, [editor]);
-
-  const handleSubmitStyle = useCallback((styleId: string) => {
-    if (!editor) return;
-    editor.commands.setStyledSpan(styleId);
-    setShowStyleDialog(false);
-  }, [editor]);
 
   const handleTagBlock = useCallback(() => {
     if (!editor) return;
@@ -504,18 +447,106 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
     return labels[name] ?? 'block';
   }, [editor]);
 
-  const existingStyleIds = useCallback((): string[] => {
-    if (!editor) return [];
-    const ids = new Set<string>();
-    editor.state.doc.descendants((node) => {
-      node.marks.forEach(mark => {
-        if (mark.type.name === 'styledSpan' && mark.attrs.styleId) {
-          ids.add(mark.attrs.styleId);
-        }
+
+  const handleSendClaudeMessage = useCallback(async (message: string) => {
+    if (!claudeConfig?.apiKey || !editor) return;
+
+    const userMessage: ChatMessage = {
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString(),
+    };
+
+    const currentChat = chatHistoryRef.current;
+    const updatedChat = [...currentChat, userMessage];
+    chatHistoryRef.current = updatedChat;
+    onChatHistoryChange?.(updatedChat);
+
+    setClaudeLoading(true);
+    try {
+      const mdxxSource = buildFullMdxx(editor.getHTML());
+      const response = await sendMessage({
+        config: claudeConfig,
+        messages: updatedChat.map(m => ({ role: m.role, content: m.content })),
+        mdxxSource,
+        agentInstructions: agentInstructionsRef.current,
       });
-    });
-    return Array.from(ids);
-  }, [editor]);
+
+      const parsed = parseStructuredResponse(response);
+
+      const assistantMessage: ChatMessage = {
+        role: 'assistant',
+        content: parsed.explanation,
+        timestamp: new Date().toISOString(),
+        edits: parsed.edits.length > 0 ? parsed.edits : undefined,
+      };
+
+      const withResponse = [...updatedChat, assistantMessage];
+      chatHistoryRef.current = withResponse;
+      onChatHistoryChange?.(withResponse);
+    } catch (err) {
+      const errorMessage: ChatMessage = {
+        role: 'assistant',
+        content: `Error: ${err instanceof Error ? err.message : 'Failed to get response'}`,
+        timestamp: new Date().toISOString(),
+      };
+      const withError = [...updatedChat, errorMessage];
+      chatHistoryRef.current = withError;
+      onChatHistoryChange?.(withError);
+    } finally {
+      setClaudeLoading(false);
+    }
+  }, [claudeConfig, editor, buildFullMdxx, onChatHistoryChange]);
+
+  const handleApplyEdits = useCallback(async (messageIndex: number) => {
+    const msg = chatHistoryRef.current[messageIndex];
+    if (!msg?.edits || msg.editsApplied || !editor) return;
+
+    const mdxxSource = buildFullMdxx(editor.getHTML());
+    const { applyEdits } = await import('@/lib/apply-edits');
+    const { newMdxx, applied, failed } = applyEdits(mdxxSource, msg.edits);
+
+    if (applied > 0) {
+      const { mdxxToTiptap } = await import('@/lib/mdxx-to-tiptap');
+      const { html, comments: newComments, elementStyles, agentInstructions: newAgent } = await mdxxToTiptap(newMdxx);
+      if (newAgent) agentInstructionsRef.current = newAgent;
+      elementStylesRef.current = { ...elementStylesRef.current, ...elementStyles };
+      editor.commands.setContent(html);
+      setComments(newComments);
+    }
+
+    // Mark edits as applied
+    const updated = [...chatHistoryRef.current];
+    updated[messageIndex] = { ...msg, editsApplied: true };
+    chatHistoryRef.current = updated;
+    onChatHistoryChange?.(updated);
+
+    if (failed.length > 0) {
+      const errorMsg: ChatMessage = {
+        role: 'assistant',
+        content: `Could not apply ${failed.length} of ${msg.edits.length} edit${msg.edits.length > 1 ? 's' : ''} (text not found in document).`,
+        timestamp: new Date().toISOString(),
+      };
+      chatHistoryRef.current = [...chatHistoryRef.current, errorMsg];
+      onChatHistoryChange?.(chatHistoryRef.current);
+    }
+  }, [editor, buildFullMdxx, onChatHistoryChange]);
+
+  const handleDismissEdits = useCallback((messageIndex: number) => {
+    const msg = chatHistoryRef.current[messageIndex];
+    if (!msg?.edits) return;
+
+    const updated = [...chatHistoryRef.current];
+    updated[messageIndex] = { ...msg, edits: undefined };
+    chatHistoryRef.current = updated;
+    onChatHistoryChange?.(updated);
+  }, [onChatHistoryChange]);
+
+  const handleSaveSettings = useCallback(async (config: ClaudeConfig) => {
+    await saveClaudeSettings(config);
+    setClaudeConfig(config);
+    setShowSettings(false);
+  }, []);
 
   const getCommentTexts = useCallback((): Record<string, string> => {
     if (!editor) return {};
@@ -660,11 +691,12 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
         <Toolbar
           editor={editor}
           onAddComment={handleAddComment}
-          onAddStyle={handleAddStyle}
           onTagBlock={handleTagBlock}
-          onToggleComments={() => setShowComments(v => !v)}
+          onToggleComments={() => setRightPanel(prev => prev === 'comments' ? null : 'comments')}
           onToggleMarkdown={() => setShowMarkdown(v => !v)}
+          onToggleClaude={() => setRightPanel(prev => prev === 'claude' ? null : 'claude')}
           showMarkdown={showMarkdown}
+          showClaude={rightPanel === 'claude'}
           commentCount={activeCommentCount}
         />
         <div className="flex-1 overflow-auto bg-[#e8e8e8]">
@@ -698,19 +730,59 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
         )}
       </div>
 
-      {showComments && (
-        <CommentSidebar
-          editor={editor}
-          comments={comments}
-          commentTexts={commentTexts}
-          activeCommentId={activeCommentId}
-          onSetActiveComment={setActiveCommentId}
-          onResolve={handleResolveComment}
-          onDelete={handleDeleteComment}
-          onEdit={handleEditComment}
-          onReply={handleReplyComment}
-          onClose={() => setShowComments(false)}
-        />
+      {rightPanel && (
+        <div className="flex flex-col h-full border-l">
+          {/* Tab bar */}
+          <div className="flex border-b bg-white">
+            <button
+              onClick={() => setRightPanel('claude')}
+              className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                rightPanel === 'claude'
+                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Claude
+            </button>
+            <button
+              onClick={() => setRightPanel('comments')}
+              className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                rightPanel === 'comments'
+                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Comments{activeCommentCount > 0 ? ` (${activeCommentCount})` : ''}
+            </button>
+          </div>
+
+          {rightPanel === 'claude' && (
+            <ClaudeSidebar
+              messages={chatHistoryRef.current}
+              onSendMessage={handleSendClaudeMessage}
+              onApplyEdits={handleApplyEdits}
+              onDismissEdits={handleDismissEdits}
+              isLoading={claudeLoading}
+              hasApiKey={!!claudeConfig?.apiKey}
+              onOpenSettings={() => setShowSettings(true)}
+            />
+          )}
+
+          {rightPanel === 'comments' && (
+            <CommentSidebar
+              editor={editor}
+              comments={comments}
+              commentTexts={commentTexts}
+              activeCommentId={activeCommentId}
+              onSetActiveComment={setActiveCommentId}
+              onResolve={handleResolveComment}
+              onDelete={handleDeleteComment}
+              onEdit={handleEditComment}
+              onReply={handleReplyComment}
+              onClose={() => setRightPanel(null)}
+            />
+          )}
+        </div>
       )}
 
       <CommentPopover
@@ -729,13 +801,6 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
         />
       )}
 
-      {showStyleDialog && (
-        <StyleDialog
-          onSubmit={handleSubmitStyle}
-          onCancel={() => setShowStyleDialog(false)}
-          existingIds={existingStyleIds()}
-        />
-      )}
 
       {showBlockIdDialog && (
         <BlockIdDialog
@@ -743,6 +808,14 @@ export function Editor({ initialContent, initialComments, onChange, onCommentsCh
           blockType={getCurrentBlockType()}
           onSubmit={handleSubmitBlockId}
           onCancel={() => setShowBlockIdDialog(false)}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsDialog
+          initialConfig={claudeConfig}
+          onSave={handleSaveSettings}
+          onCancel={() => setShowSettings(false)}
         />
       )}
     </div>

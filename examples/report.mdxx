@@ -100,10 +100,11 @@ The renderer ignores Section 3 entirely.
 
 ## Rules
 - Section 1 is standard Markdown. Keep it human-readable.
-- Only add ~id tags to elements that need custom styling.
-- Use lowercase-kebab-case for IDs.
-- Comment anchors: {{id}}...{{/id}}
-- Inline spans: [text]{~id}
+- Only add ~id tags to block elements that need custom styling.
+- Use lowercase-kebab-case for block IDs (e.g. ~section-revenue).
+- Inline styled spans use auto-generated hash IDs (e.g. ~s-1lck6yy) — do not rename them.
+- Inline span syntax: [text]{~id} in Section 1, @id { props } in Section 2.
+- Comment anchors: {{id}}...{{/id}} in Section 1, @comment:id { ... } in Section 2.
 - Never put styling in Section 1. Never put content in Section 2.
 
 ## Constraints

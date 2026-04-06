@@ -5,11 +5,12 @@ import { useCallback, useRef, useState } from 'react';
 interface ToolbarProps {
   editor: Editor | null;
   onAddComment: () => void;
-  onAddStyle: () => void;
   onTagBlock: () => void;
   onToggleComments: () => void;
   onToggleMarkdown: () => void;
+  onToggleClaude: () => void;
   showMarkdown: boolean;
+  showClaude: boolean;
   commentCount: number;
 }
 
@@ -228,7 +229,7 @@ function ColorPickerButton({ editor }: { editor: Editor }) {
   );
 }
 
-export function Toolbar({ editor, onAddComment, onAddStyle, onTagBlock, onToggleComments, onToggleMarkdown, showMarkdown, commentCount }: ToolbarProps) {
+export function Toolbar({ editor, onAddComment, onTagBlock, onToggleComments, onToggleMarkdown, onToggleClaude, showMarkdown, showClaude, commentCount }: ToolbarProps) {
   if (!editor) return null;
 
   const hasSelection = !editor.state.selection.empty;
@@ -350,20 +351,6 @@ export function Toolbar({ editor, onAddComment, onAddStyle, onTagBlock, onToggle
       </Btn>
 
       <Btn
-        onClick={onAddStyle}
-        disabled={!hasSelection}
-        title={hasSelection ? 'Apply named style to selection' : 'Select text first to apply a style'}
-        variant="accent"
-      >
-        <span className="flex items-center gap-1 text-xs">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 2l5 12h1.5L4.5 4.5 8 2h-.5L2 2zm6 0l5 12h1.5L10 4l-1.5-2H8z"/>
-          </svg>
-          Style
-        </span>
-      </Btn>
-
-      <Btn
         onClick={onTagBlock}
         title="Tag current block with an ID for styling"
         variant="accent"
@@ -390,6 +377,20 @@ export function Toolbar({ editor, onAddComment, onAddStyle, onTagBlock, onToggle
             <path d="M2 3a1 1 0 00-1 1v8a1 1 0 001 1h12a1 1 0 001-1V4a1 1 0 00-1-1H2zm1.5 2h1.5l1.5 2 1.5-2H9.5v6H8V7.5L6.5 9.5h-.01L5 7.5V11H3.5V5zm7 0h2L11 8l-1.5-3z"/>
           </svg>
           MD
+        </span>
+      </Btn>
+
+      {/* Claude toggle */}
+      <Btn
+        onClick={onToggleClaude}
+        active={showClaude}
+        title="Toggle Claude AI panel"
+      >
+        <span className="flex items-center gap-1 text-xs">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 1l1.5 3.5L13 6l-3.5 1.5L8 11l-1.5-3.5L3 6l3.5-1.5L8 1zm4 6l.75 1.75L14.5 10l-1.75.75L12 12.5l-.75-1.75L9.5 10l1.75-.75L12 7z"/>
+          </svg>
+          AI
         </span>
       </Btn>
 

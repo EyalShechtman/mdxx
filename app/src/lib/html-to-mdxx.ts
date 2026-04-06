@@ -15,7 +15,7 @@ export interface HtmlToMdxxResult {
 
 class SerializationContext {
   private styleMap = new Map<string, string>(); // signature -> id
-  private counter = 0;
+  private registeredIds = new Set<string>();
   styles: InlineStyleEntry[] = [];
 
   getStyleId(properties: Record<string, string>): string {
@@ -26,13 +26,76 @@ class SerializationContext {
 
     let id = this.styleMap.get(sig);
     if (!id) {
-      this.counter++;
-      id = `auto-${this.counter}`;
+      // Generate a stable hash-based ID from the style signature
+      id = `s-${stableHash(sig)}`;
       this.styleMap.set(sig, id);
       this.styles.push({ id, properties });
+      this.registeredIds.add(id);
     }
     return id;
   }
+
+  registerStyle(id: string, properties: Record<string, string>): void {
+    if (!this.registeredIds.has(id)) {
+      this.registeredIds.add(id);
+      this.styles.push({ id, properties });
+    }
+  }
+}
+
+/**
+ * Walk down through nested spans that only contain style properties,
+ * merging all their CSS into one combined set. Stops when we hit a span
+ * with non-style children (text nodes, other elements).
+ */
+function collectSpanStyles(el: HTMLElement): { props: Record<string, string>; styleId: string | null; innerEl: HTMLElement } {
+  const props: Record<string, string> = {};
+  let styleId: string | null = null;
+  let current = el;
+
+  while (true) {
+    // Grab any style-id from this level
+    const sid = current.getAttribute('data-style-id');
+    if (sid && !styleId) styleId = sid;
+
+    // Merge inline style props from this span
+    Object.assign(props, extractStyleProps(current));
+
+    // If this span has exactly one child and it's a style-only span, descend into it
+    const children = current.childNodes;
+    if (
+      children.length === 1 &&
+      children[0].nodeType === Node.ELEMENT_NODE &&
+      (children[0] as HTMLElement).tagName?.toLowerCase() === 'span' &&
+      !(children[0] as HTMLElement).getAttribute('data-comment-id')
+    ) {
+      current = children[0] as HTMLElement;
+      continue;
+    }
+    break;
+  }
+
+  return { props, styleId, innerEl: current };
+}
+
+function extractStyleProps(el: HTMLElement): Record<string, string> {
+  const props: Record<string, string> = {};
+  const fontFamily = el.style.fontFamily?.replace(/['"]/g, '') || '';
+  const fontSize = el.style.fontSize || '';
+  const color = el.style.color || '';
+  if (fontFamily) props['font-family'] = `"${fontFamily}"`;
+  if (fontSize) props['font-size'] = fontSize;
+  if (color) props['color'] = color;
+  return props;
+}
+
+function stableHash(str: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
 }
 
 export function htmlToMdxx(html: string): HtmlToMdxxResult {
@@ -186,23 +249,19 @@ function inlineContent(el: Element | ChildNode, ctx: SerializationContext): stri
         break;
       case 'span': {
         const commentId = childEl.getAttribute('data-comment-id');
-        const styleId = childEl.getAttribute('data-style-id');
-        const text = inlineContent(childEl, ctx);
         if (commentId) {
+          const text = inlineContent(childEl, ctx);
           parts.push(`{{${commentId}}}${text}{{/${commentId}}}`);
-        } else if (styleId) {
-          parts.push(`[${text}]{~${styleId}}`);
         } else {
-          // Check for inline font styles (from font/size pickers)
-          const fontFamily = childEl.style.fontFamily?.replace(/['"]/g, '') || '';
-          const fontSize = childEl.style.fontSize || '';
-          const props: Record<string, string> = {};
-          if (fontFamily) props['font-family'] = `"${fontFamily}"`;
-          if (fontSize) props['font-size'] = fontSize;
-
+          // Collect all style props from this span and any nested style-only spans
+          const { props, styleId, innerEl } = collectSpanStyles(childEl);
+          const text = inlineContent(innerEl, ctx);
           if (Object.keys(props).length > 0) {
-            const autoId = ctx.getStyleId(props);
-            parts.push(`[${text}]{~${autoId}}`);
+            const id = styleId ?? ctx.getStyleId(props);
+            if (styleId) ctx.registerStyle(id, props);
+            parts.push(`[${text}]{~${id}}`);
+          } else if (styleId) {
+            parts.push(`[${text}]{~${styleId}}`);
           } else {
             parts.push(text);
           }

@@ -128,6 +128,7 @@ export interface MdxxDocument {
   content: ContentNode[];
   styles: StyleSheet;
   agent_instructions: string | null;
+  chat_history: string | null;
 }
 
 export interface ParseOutput {
