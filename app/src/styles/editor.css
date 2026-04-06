@@ -299,7 +299,7 @@
 
 /* Styled spans — no visual indicator, just carries the style */
 
-/* Block ID indicator */
+/* Block ID indicator — only show for user-created IDs, not auto-generated (s-*) */
 [data-block-id]::after {
   content: '~' attr(data-block-id);
   display: inline-block;
@@ -315,6 +315,10 @@
   line-height: 1.4;
   opacity: 0.7;
   transition: opacity 0.15s;
+}
+
+[data-block-id^="s-"]::after {
+  display: none;
 }
 
 [data-block-id]:hover::after {
