@@ -299,28 +299,3 @@
 
 /* Styled spans — no visual indicator, just carries the style */
 
-/* Block ID indicator — only show for user-created IDs, not auto-generated (s-*) */
-[data-block-id]::after {
-  content: '~' attr(data-block-id);
-  display: inline-block;
-  margin-left: 8px;
-  font-size: 10px;
-  font-family: 'JetBrains Mono', monospace;
-  color: #8b5cf6;
-  background: #ede9fe;
-  padding: 1px 6px;
-  border-radius: 10px;
-  font-weight: 500;
-  vertical-align: middle;
-  line-height: 1.4;
-  opacity: 0.7;
-  transition: opacity 0.15s;
-}
-
-[data-block-id^="s-"]::after {
-  display: none;
-}
-
-[data-block-id]:hover::after {
-  opacity: 1;
-}

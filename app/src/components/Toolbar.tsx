@@ -5,7 +5,6 @@ import { useCallback, useRef, useState } from 'react';
 interface ToolbarProps {
   editor: Editor | null;
   onAddComment: () => void;
-  onTagBlock: () => void;
   onToggleComments: () => void;
   onToggleMarkdown: () => void;
   onToggleClaude: () => void;
@@ -229,7 +228,7 @@ function ColorPickerButton({ editor }: { editor: Editor }) {
   );
 }
 
-export function Toolbar({ editor, onAddComment, onTagBlock, onToggleComments, onToggleMarkdown, onToggleClaude, showMarkdown, showClaude, commentCount }: ToolbarProps) {
+export function Toolbar({ editor, onAddComment, onToggleComments, onToggleMarkdown, onToggleClaude, showMarkdown, showClaude, commentCount }: ToolbarProps) {
   if (!editor) return null;
 
   const hasSelection = !editor.state.selection.empty;
@@ -347,19 +346,6 @@ export function Toolbar({ editor, onAddComment, onTagBlock, onToggleComments, on
             <path d="M2 2h12a1 1 0 011 1v8a1 1 0 01-1 1H5l-3 3V3a1 1 0 011-1zm1 2v6.5l1.5-1.5H13V4H3z"/>
           </svg>
           Comment
-        </span>
-      </Btn>
-
-      <Btn
-        onClick={onTagBlock}
-        title="Tag current block with an ID for styling"
-        variant="accent"
-      >
-        <span className="flex items-center gap-1 text-xs">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M1 3a1 1 0 011-1h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 010 1.414l-4.586 4.586a1 1 0 01-1.414 0L2.293 8.293A1 1 0 012 7.586V3zm2.5 1.5a1 1 0 100 2 1 1 0 000-2z"/>
-          </svg>
-          Tag
         </span>
       </Btn>
 

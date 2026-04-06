@@ -19,7 +19,6 @@ import { Toolbar } from './Toolbar';
 import { CommentSidebar } from './CommentSidebar';
 import { ClaudeSidebar } from './ClaudeSidebar';
 import { CommentDialog } from './CommentDialog';
-import { BlockIdDialog } from './BlockIdDialog';
 import { MarkdownPanel } from './MarkdownPanel';
 import { ZoomStatusBar } from './ZoomStatusBar';
 import { CommentPopover } from './CommentPopover';
@@ -200,7 +199,6 @@ export function Editor({ initialContent, initialComments, initialElementStyles, 
   const [showMarkdown, setShowMarkdown] = useState(false);
   const [markdownSource, setMarkdownSource] = useState('');
   const [showCommentDialog, setShowCommentDialog] = useState(false);
-  const [showBlockIdDialog, setShowBlockIdDialog] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const [hoveredComment, setHoveredComment] = useState<CommentData | null>(null);
@@ -409,43 +407,6 @@ export function Editor({ initialContent, initialComments, initialElementStyles, 
   }, []);
 
 
-  const handleTagBlock = useCallback(() => {
-    if (!editor) return;
-    setShowBlockIdDialog(true);
-  }, [editor]);
-
-  const handleSubmitBlockId = useCallback((blockId: string | null) => {
-    if (!editor) return;
-    const { from } = editor.state.selection;
-    const resolvedPos = editor.state.doc.resolve(from);
-    const node = resolvedPos.parent;
-    editor.commands.updateAttributes(node.type.name, { blockId });
-    setShowBlockIdDialog(false);
-  }, [editor]);
-
-  const getCurrentBlockId = useCallback((): string | null => {
-    if (!editor) return null;
-    const { from } = editor.state.selection;
-    const resolvedPos = editor.state.doc.resolve(from);
-    return resolvedPos.parent.attrs.blockId ?? null;
-  }, [editor]);
-
-  const getCurrentBlockType = useCallback((): string => {
-    if (!editor) return 'block';
-    const { from } = editor.state.selection;
-    const resolvedPos = editor.state.doc.resolve(from);
-    const name = resolvedPos.parent.type.name;
-    const labels: Record<string, string> = {
-      heading: 'heading',
-      paragraph: 'paragraph',
-      blockquote: 'blockquote',
-      bulletList: 'list',
-      orderedList: 'list',
-      codeBlock: 'code block',
-      table: 'table',
-    };
-    return labels[name] ?? 'block';
-  }, [editor]);
 
 
   const handleSendClaudeMessage = useCallback(async (message: string) => {
@@ -691,7 +652,6 @@ export function Editor({ initialContent, initialComments, initialElementStyles, 
         <Toolbar
           editor={editor}
           onAddComment={handleAddComment}
-          onTagBlock={handleTagBlock}
           onToggleComments={() => setRightPanel(prev => prev === 'comments' ? null : 'comments')}
           onToggleMarkdown={() => setShowMarkdown(v => !v)}
           onToggleClaude={() => setRightPanel(prev => prev === 'claude' ? null : 'claude')}
@@ -801,15 +761,6 @@ export function Editor({ initialContent, initialComments, initialElementStyles, 
         />
       )}
 
-
-      {showBlockIdDialog && (
-        <BlockIdDialog
-          currentId={getCurrentBlockId()}
-          blockType={getCurrentBlockType()}
-          onSubmit={handleSubmitBlockId}
-          onCancel={() => setShowBlockIdDialog(false)}
-        />
-      )}
 
       {showSettings && (
         <SettingsDialog
