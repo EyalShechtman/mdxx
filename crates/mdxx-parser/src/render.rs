@@ -498,6 +498,7 @@ mod tests {
             content: content_nodes,
             styles,
             agent_instructions: sections.agent,
+            chat_history: sections.chat,
         };
         let html = render_html(&document);
         (document, html)

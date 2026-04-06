@@ -14,6 +14,7 @@ export default function Home() {
     openFile,
     updateContent,
     updateComments,
+    updateChatHistory,
     updateTitle,
     setBuildMdxx,
   } = useFiles();
@@ -83,8 +84,12 @@ export default function Home() {
       key={activeIndex}
       initialContent={activeFile.content}
       initialComments={activeFile.comments}
+      initialElementStyles={activeFile.elementStyles}
+      agentInstructions={activeFile.agentInstructions}
+      chatHistory={activeFile.chatHistory}
       onChange={updateContent}
       onCommentsChange={updateComments}
+      onChatHistoryChange={updateChatHistory}
       onTitleChange={updateTitle}
       onSave={handleSave}
       onBuildMdxx={setBuildMdxx}

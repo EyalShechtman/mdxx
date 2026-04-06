@@ -15,7 +15,6 @@ export interface HtmlToMdxxResult {
 
 class SerializationContext {
   private styleMap = new Map<string, string>(); // signature -> id
-  private counter = 0;
   styles: InlineStyleEntry[] = [];
 
   getStyleId(properties: Record<string, string>): string {
@@ -26,8 +25,7 @@ class SerializationContext {
 
     let id = this.styleMap.get(sig);
     if (!id) {
-      this.counter++;
-      id = `auto-${this.counter}`;
+      id = `s-${stableHash(sig)}`;
       this.styleMap.set(sig, id);
       this.styles.push({ id, properties });
     }
@@ -35,11 +33,64 @@ class SerializationContext {
   }
 }
 
+/**
+ * Walk down through nested spans that only contain style properties,
+ * merging all their CSS into one combined set. Stops when we hit a span
+ * with non-style children (text nodes, other elements).
+ */
+function collectSpanStyles(el: HTMLElement): { props: Record<string, string>; innerEl: HTMLElement } {
+  const props: Record<string, string> = {};
+  let current = el;
+
+  while (true) {
+    // Merge inline style props from this span
+    Object.assign(props, extractStyleProps(current));
+
+    // If this span has exactly one child and it's a style-only span, descend into it
+    const children = current.childNodes;
+    if (
+      children.length === 1 &&
+      children[0].nodeType === Node.ELEMENT_NODE &&
+      (children[0] as HTMLElement).tagName?.toLowerCase() === 'span' &&
+      !(children[0] as HTMLElement).getAttribute('data-comment-id')
+    ) {
+      current = children[0] as HTMLElement;
+      continue;
+    }
+    break;
+  }
+
+  return { props, innerEl: current };
+}
+
+function extractStyleProps(el: HTMLElement): Record<string, string> {
+  const props: Record<string, string> = {};
+  const fontFamily = el.style.fontFamily?.replace(/['"]/g, '') || '';
+  const fontSize = el.style.fontSize || '';
+  const color = el.style.color || '';
+  if (fontFamily) props['font-family'] = `"${fontFamily}"`;
+  if (fontSize) props['font-size'] = fontSize;
+  if (color) props['color'] = color;
+  return props;
+}
+
+function stableHash(str: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
 export function htmlToMdxx(html: string): HtmlToMdxxResult {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
   const ctx = new SerializationContext();
   const markdown = serializeNodes(doc.body.childNodes, ctx);
+  if (ctx.styles.length > 0) {
+    console.log('[html-to-mdxx] Extracted styles:', ctx.styles.map(s => `${s.id}: ${JSON.stringify(s.properties)}`));
+  }
   return { markdown, inlineStyles: ctx.styles };
 }
 
@@ -51,6 +102,47 @@ function serializeNodes(nodes: NodeListOf<ChildNode>, ctx: SerializationContext)
   return parts.join('');
 }
 
+function extractBlockStyleProps(el: HTMLElement): Record<string, string> {
+  const props: Record<string, string> = {};
+  const textAlign = el.style.textAlign;
+  if (textAlign && textAlign !== 'left') props['text-align'] = textAlign;
+  return props;
+}
+
+function blockIdSuffix(el: HTMLElement, ctx: SerializationContext): string {
+  const userBlockId = el.getAttribute('data-block-id');
+  if (userBlockId) return ` ~${userBlockId}`;
+  const blockProps = extractBlockStyleProps(el);
+  if (Object.keys(blockProps).length > 0) {
+    const id = ctx.getStyleId(blockProps);
+    return ` ~${id}`;
+  }
+  return '';
+}
+
+/**
+ * When a block's entire content is a single styled span, merge block-level
+ * props (text-align) and inline props (font/size/color) into one block ID.
+ * Returns null if the content has multiple children or mixed styles.
+ */
+function tryMergeBlockInline(el: HTMLElement, ctx: SerializationContext): { text: string; id: string } | null {
+  const blockProps = extractBlockStyleProps(el);
+  const children = el.childNodes;
+
+  // Only merge when there's exactly one child and it's a styled span
+  if (children.length !== 1 || children[0].nodeType !== Node.ELEMENT_NODE) return null;
+  const child = children[0] as HTMLElement;
+  if (child.tagName?.toLowerCase() !== 'span' || child.getAttribute('data-comment-id')) return null;
+
+  const { props: inlineProps, innerEl } = collectSpanStyles(child);
+  const merged = { ...inlineProps, ...blockProps };
+  if (Object.keys(merged).length === 0) return null;
+
+  const text = inlineContent(innerEl, ctx);
+  const id = ctx.getStyleId(merged);
+  return { text, id };
+}
+
 function serializeNode(node: ChildNode, ctx: SerializationContext): string {
   if (node.nodeType === Node.TEXT_NODE) {
     return node.textContent ?? '';
@@ -59,75 +151,94 @@ function serializeNode(node: ChildNode, ctx: SerializationContext): string {
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
   const el = node as HTMLElement;
   const tag = el.tagName.toLowerCase();
-  const blockId = el.getAttribute('data-block-id');
-  const idSuffix = blockId ? ` ~${blockId}` : '';
 
   switch (tag) {
-    case 'h1': return `# ${inlineContent(el, ctx)}${idSuffix}\n\n`;
-    case 'h2': return `## ${inlineContent(el, ctx)}${idSuffix}\n\n`;
-    case 'h3': return `### ${inlineContent(el, ctx)}${idSuffix}\n\n`;
-    case 'h4': return `#### ${inlineContent(el, ctx)}${idSuffix}\n\n`;
+    case 'h1': case 'h2': case 'h3': case 'h4': {
+      const prefix = '#'.repeat(parseInt(tag[1]));
+      const merged = tryMergeBlockInline(el, ctx);
+      if (merged) return `${prefix} ${merged.text} ~${merged.id}\n\n`;
+      return `${prefix} ${inlineContent(el, ctx)}${blockIdSuffix(el, ctx)}\n\n`;
+    }
 
     case 'p': {
+      const merged = tryMergeBlockInline(el, ctx);
+      if (merged) {
+        if (!merged.text.trim()) return '\n';
+        return `${merged.text} ~${merged.id}\n\n`;
+      }
       const text = inlineContent(el, ctx);
       if (!text.trim()) return '\n';
-      return `${text}${idSuffix}\n\n`;
+      return `${text}${blockIdSuffix(el, ctx)}\n\n`;
     }
 
     case 'blockquote': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? ` ~${blockId}` : '';
       const inner = serializeNodes(el.childNodes, ctx)
         .trim()
         .split('\n')
         .map(line => `> ${line}`)
         .join('\n');
-      return `${inner}\n${idSuffix ? idSuffix.trim() + '\n' : ''}\n`;
+      return `${inner}\n${suffix ? suffix.trim() + '\n' : ''}\n`;
     }
 
     case 'ul': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? `\n~${blockId}` : '';
       if (el.getAttribute('data-type') === 'taskList') {
         const items = Array.from(el.children).map(li => {
           const checked = li.getAttribute('data-checked') === 'true';
           const content = inlineContent(li.querySelector('div, p') ?? li, ctx);
           return `- [${checked ? 'x' : ' '}] ${content}`;
         });
-        return items.join('\n') + (idSuffix ? `\n${idSuffix.trim()}` : '') + '\n\n';
+        return items.join('\n') + suffix + '\n\n';
       }
       const items = Array.from(el.children).map(li => {
         return `- ${inlineContent(li.querySelector('p') ?? li, ctx)}`;
       });
-      return items.join('\n') + (idSuffix ? `\n${idSuffix.trim()}` : '') + '\n\n';
+      return items.join('\n') + suffix + '\n\n';
     }
 
     case 'ol': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? `\n~${blockId}` : '';
       const items = Array.from(el.children).map((li, i) => {
         return `${i + 1}. ${inlineContent(li.querySelector('p') ?? li, ctx)}`;
       });
-      return items.join('\n') + (idSuffix ? `\n${idSuffix.trim()}` : '') + '\n\n';
+      return items.join('\n') + suffix + '\n\n';
     }
 
     case 'pre': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? `\n~${blockId}` : '';
       const code = el.querySelector('code');
       const lang = code?.className?.match(/language-(\w+)/)?.[1] ?? '';
       const content = code?.textContent ?? el.textContent ?? '';
-      return `\`\`\`${lang}\n${content}\n\`\`\`${idSuffix ? `\n${idSuffix.trim()}` : ''}\n\n`;
+      return `\`\`\`${lang}\n${content}\n\`\`\`${suffix}\n\n`;
     }
 
     case 'table': {
-      return serializeTable(el, ctx) + (idSuffix ? `${idSuffix.trim()}\n` : '') + '\n';
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? `~${blockId}\n` : '';
+      return serializeTable(el, ctx) + suffix + '\n';
     }
 
     case 'img': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? ` ~${blockId}` : '';
       const alt = el.getAttribute('alt') ?? '';
       const src = el.getAttribute('src') ?? '';
-      return `![${alt}](${src})${idSuffix}\n\n`;
+      return `![${alt}](${src})${suffix}\n\n`;
     }
 
     case 'figure': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? ` ~${blockId}` : '';
       const img = el.querySelector('img');
       if (img) {
         const alt = img.getAttribute('alt') ?? '';
         const src = img.getAttribute('src') ?? '';
-        return `![${alt}](${src})${idSuffix}\n\n`;
+        return `![${alt}](${src})${suffix}\n\n`;
       }
       return '';
     }
@@ -186,23 +297,16 @@ function inlineContent(el: Element | ChildNode, ctx: SerializationContext): stri
         break;
       case 'span': {
         const commentId = childEl.getAttribute('data-comment-id');
-        const styleId = childEl.getAttribute('data-style-id');
-        const text = inlineContent(childEl, ctx);
         if (commentId) {
+          const text = inlineContent(childEl, ctx);
           parts.push(`{{${commentId}}}${text}{{/${commentId}}}`);
-        } else if (styleId) {
-          parts.push(`[${text}]{~${styleId}}`);
         } else {
-          // Check for inline font styles (from font/size pickers)
-          const fontFamily = childEl.style.fontFamily?.replace(/['"]/g, '') || '';
-          const fontSize = childEl.style.fontSize || '';
-          const props: Record<string, string> = {};
-          if (fontFamily) props['font-family'] = `"${fontFamily}"`;
-          if (fontSize) props['font-size'] = fontSize;
-
+          // Collect all style props from this span and any nested style-only spans
+          const { props, innerEl } = collectSpanStyles(childEl);
+          const text = inlineContent(innerEl, ctx);
           if (Object.keys(props).length > 0) {
-            const autoId = ctx.getStyleId(props);
-            parts.push(`[${text}]{~${autoId}}`);
+            const id = ctx.getStyleId(props);
+            parts.push(`[${text}]{~${id}}`);
           } else {
             parts.push(text);
           }

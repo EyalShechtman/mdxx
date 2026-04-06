@@ -5,6 +5,7 @@ pub struct MdxxDocument {
     pub content: Vec<ContentNode>,
     pub styles: StyleSheet,
     pub agent_instructions: Option<String>,
+    pub chat_history: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

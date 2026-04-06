@@ -37,17 +37,27 @@ function renderInlineNode(node: InlineNode, styleMap: Map<string, Record<string,
     case 'CommentAnchor':
       return `<span data-comment-id="${escapeHtml(node.id)}">${renderInlineNodes(node.children, styleMap)}</span>`;
     case 'StyledSpan': {
+      // Flatten double-nested styled spans with the same ID
+      let children = node.children;
+      if (
+        children.length === 1 &&
+        children[0].type === 'StyledSpan' &&
+        children[0].id === node.id
+      ) {
+        children = children[0].children;
+      }
       const props = styleMap.get(node.id);
-      let styleAttr = '';
       if (props) {
         const parts: string[] = [];
-        const fontFamily = props['font-family'];
-        const fontSize = props['font-size'];
-        if (fontFamily) parts.push(`font-family: ${fontFamily}`);
-        if (fontSize) parts.push(`font-size: ${fontSize}`);
-        if (parts.length > 0) styleAttr = ` style="${parts.join('; ')}"`;
+        for (const [key, value] of Object.entries(props)) {
+          if (value) parts.push(`${key}: ${value}`);
+        }
+        if (parts.length > 0) {
+          return `<span style="${parts.join('; ')}">${renderInlineNodes(children, styleMap)}</span>`;
+        }
       }
-      return `<span data-style-id="${escapeHtml(node.id)}"${styleAttr}>${renderInlineNodes(node.children, styleMap)}</span>`;
+      // No style properties found — render children without a wrapper
+      return renderInlineNodes(children, styleMap);
     }
     case 'Strikethrough':
       return `<s>${renderInlineNodes(node.children, styleMap)}</s>`;
@@ -75,19 +85,47 @@ function alignmentToStyle(alignment: Alignment): string {
 // Content node rendering
 // ---------------------------------------------------------------------------
 
+const BLOCK_PROPS = new Set(['text-align']);
+
+function blockStyles(id: string | undefined | null, styleMap: Map<string, Record<string, string>>): { blockAttr: string; inlineWrap: (html: string) => string } {
+  const noop = { blockAttr: '', inlineWrap: (h: string) => h };
+  if (!id) return noop;
+  const props = styleMap.get(id);
+  if (!props) return noop;
+
+  const blockParts: string[] = [];
+  const inlineParts: string[] = [];
+  for (const [key, value] of Object.entries(props)) {
+    if (BLOCK_PROPS.has(key)) {
+      blockParts.push(`${key}: ${value}`);
+    } else if (value) {
+      inlineParts.push(`${key}: ${value}`);
+    }
+  }
+
+  const blockAttr = blockParts.length > 0 ? ` style="${blockParts.join('; ')}"` : '';
+  const inlineWrap = inlineParts.length > 0
+    ? (html: string) => `<span style="${inlineParts.join('; ')}">${html}</span>`
+    : (html: string) => html;
+
+  return { blockAttr, inlineWrap };
+}
+
 function renderContentNode(node: ContentNode, styleMap: Map<string, Record<string, string>>): string {
   switch (node.type) {
     case 'Heading': {
       const tag = `h${node.level}`;
       const idAttr = node.id != null ? ` data-block-id="${escapeHtml(node.id)}"` : '';
-      const inner = renderInlineNodes(node.children, styleMap);
-      return `<${tag}${idAttr}>${inner}</${tag}>`;
+      const { blockAttr, inlineWrap } = blockStyles(node.id, styleMap);
+      const inner = inlineWrap(renderInlineNodes(node.children, styleMap));
+      return `<${tag}${idAttr}${blockAttr}>${inner}</${tag}>`;
     }
 
     case 'Paragraph': {
       const idAttr = node.id != null ? ` data-block-id="${escapeHtml(node.id)}"` : '';
-      const inner = renderInlineNodes(node.children, styleMap);
-      return `<p${idAttr}>${inner}</p>`;
+      const { blockAttr, inlineWrap } = blockStyles(node.id, styleMap);
+      const inner = inlineWrap(renderInlineNodes(node.children, styleMap));
+      return `<p${idAttr}${blockAttr}>${inner}</p>`;
     }
 
     case 'Image': {
@@ -184,7 +222,7 @@ function renderContentNodes(nodes: ContentNode[], styleMap: Map<string, Record<s
 
 export async function mdxxToTiptap(
   raw: string,
-): Promise<{ html: string; comments: CommentData[] }> {
+): Promise<{ html: string; comments: CommentData[]; elementStyles: Record<string, Record<string, string>>; agentInstructions: string | null; chatHistory: string | null }> {
   await initWasm();
   const output = parseMdxx(raw);
 
@@ -197,6 +235,10 @@ export async function mdxxToTiptap(
     if (Object.keys(props).length > 0) {
       styleMap.set(elem.id, props);
     }
+  }
+
+  if (styleMap.size > 0) {
+    console.log('[mdxx-to-tiptap] Loaded styles from Section 2:', Object.fromEntries(styleMap));
   }
 
   const html = renderContentNodes(output.document.content, styleMap);
@@ -216,5 +258,17 @@ export async function mdxxToTiptap(
     })),
   }));
 
-  return { html, comments };
+  // Convert styleMap to plain object for the caller
+  const elementStyles: Record<string, Record<string, string>> = {};
+  for (const [id, props] of styleMap) {
+    elementStyles[id] = props;
+  }
+
+  return {
+    html,
+    comments,
+    elementStyles,
+    agentInstructions: output.document.agent_instructions ?? null,
+    chatHistory: output.document.chat_history ?? null,
+  };
 }
