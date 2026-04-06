@@ -37,7 +37,7 @@ function renderInlineNode(node: InlineNode, styleMap: Map<string, Record<string,
     case 'CommentAnchor':
       return `<span data-comment-id="${escapeHtml(node.id)}">${renderInlineNodes(node.children, styleMap)}</span>`;
     case 'StyledSpan': {
-      // Flatten double-nested styled spans with the same ID: [[text]{~id}]{~id} → [text]{~id}
+      // Flatten double-nested styled spans with the same ID
       let children = node.children;
       if (
         children.length === 1 &&
@@ -47,15 +47,17 @@ function renderInlineNode(node: InlineNode, styleMap: Map<string, Record<string,
         children = children[0].children;
       }
       const props = styleMap.get(node.id);
-      let styleAttr = '';
       if (props) {
         const parts: string[] = [];
         for (const [key, value] of Object.entries(props)) {
           if (value) parts.push(`${key}: ${value}`);
         }
-        if (parts.length > 0) styleAttr = ` style="${parts.join('; ')}"`;
+        if (parts.length > 0) {
+          return `<span style="${parts.join('; ')}">${renderInlineNodes(children, styleMap)}</span>`;
+        }
       }
-      return `<span data-style-id="${escapeHtml(node.id)}"${styleAttr}>${renderInlineNodes(children, styleMap)}</span>`;
+      // No style properties found — render children without a wrapper
+      return renderInlineNodes(children, styleMap);
     }
     case 'Strikethrough':
       return `<s>${renderInlineNodes(node.children, styleMap)}</s>`;
@@ -205,6 +207,10 @@ export async function mdxxToTiptap(
     if (Object.keys(props).length > 0) {
       styleMap.set(elem.id, props);
     }
+  }
+
+  if (styleMap.size > 0) {
+    console.log('[mdxx-to-tiptap] Loaded styles from Section 2:', Object.fromEntries(styleMap));
   }
 
   const html = renderContentNodes(output.document.content, styleMap);

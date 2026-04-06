@@ -15,7 +15,6 @@ export interface HtmlToMdxxResult {
 
 class SerializationContext {
   private styleMap = new Map<string, string>(); // signature -> id
-  private registeredIds = new Set<string>();
   styles: InlineStyleEntry[] = [];
 
   getStyleId(properties: Record<string, string>): string {
@@ -26,20 +25,11 @@ class SerializationContext {
 
     let id = this.styleMap.get(sig);
     if (!id) {
-      // Generate a stable hash-based ID from the style signature
       id = `s-${stableHash(sig)}`;
       this.styleMap.set(sig, id);
       this.styles.push({ id, properties });
-      this.registeredIds.add(id);
     }
     return id;
-  }
-
-  registerStyle(id: string, properties: Record<string, string>): void {
-    if (!this.registeredIds.has(id)) {
-      this.registeredIds.add(id);
-      this.styles.push({ id, properties });
-    }
   }
 }
 
@@ -48,16 +38,11 @@ class SerializationContext {
  * merging all their CSS into one combined set. Stops when we hit a span
  * with non-style children (text nodes, other elements).
  */
-function collectSpanStyles(el: HTMLElement): { props: Record<string, string>; styleId: string | null; innerEl: HTMLElement } {
+function collectSpanStyles(el: HTMLElement): { props: Record<string, string>; innerEl: HTMLElement } {
   const props: Record<string, string> = {};
-  let styleId: string | null = null;
   let current = el;
 
   while (true) {
-    // Grab any style-id from this level
-    const sid = current.getAttribute('data-style-id');
-    if (sid && !styleId) styleId = sid;
-
     // Merge inline style props from this span
     Object.assign(props, extractStyleProps(current));
 
@@ -75,7 +60,7 @@ function collectSpanStyles(el: HTMLElement): { props: Record<string, string>; st
     break;
   }
 
-  return { props, styleId, innerEl: current };
+  return { props, innerEl: current };
 }
 
 function extractStyleProps(el: HTMLElement): Record<string, string> {
@@ -103,6 +88,9 @@ export function htmlToMdxx(html: string): HtmlToMdxxResult {
   const doc = parser.parseFromString(html, 'text/html');
   const ctx = new SerializationContext();
   const markdown = serializeNodes(doc.body.childNodes, ctx);
+  if (ctx.styles.length > 0) {
+    console.log('[html-to-mdxx] Extracted styles:', ctx.styles.map(s => `${s.id}: ${JSON.stringify(s.properties)}`));
+  }
   return { markdown, inlineStyles: ctx.styles };
 }
 
@@ -254,14 +242,11 @@ function inlineContent(el: Element | ChildNode, ctx: SerializationContext): stri
           parts.push(`{{${commentId}}}${text}{{/${commentId}}}`);
         } else {
           // Collect all style props from this span and any nested style-only spans
-          const { props, styleId, innerEl } = collectSpanStyles(childEl);
+          const { props, innerEl } = collectSpanStyles(childEl);
           const text = inlineContent(innerEl, ctx);
           if (Object.keys(props).length > 0) {
-            const id = styleId ?? ctx.getStyleId(props);
-            if (styleId) ctx.registerStyle(id, props);
+            const id = ctx.getStyleId(props);
             parts.push(`[${text}]{~${id}}`);
-          } else if (styleId) {
-            parts.push(`[${text}]{~${styleId}}`);
           } else {
             parts.push(text);
           }
