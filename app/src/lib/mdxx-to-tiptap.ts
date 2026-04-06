@@ -85,13 +85,30 @@ function alignmentToStyle(alignment: Alignment): string {
 // Content node rendering
 // ---------------------------------------------------------------------------
 
-function blockStyleAttr(id: string | undefined | null, styleMap: Map<string, Record<string, string>>): string {
-  if (!id) return '';
+const BLOCK_PROPS = new Set(['text-align']);
+
+function blockStyles(id: string | undefined | null, styleMap: Map<string, Record<string, string>>): { blockAttr: string; inlineWrap: (html: string) => string } {
+  const noop = { blockAttr: '', inlineWrap: (h: string) => h };
+  if (!id) return noop;
   const props = styleMap.get(id);
-  if (!props) return '';
-  const parts: string[] = [];
-  if (props['text-align']) parts.push(`text-align: ${props['text-align']}`);
-  return parts.length > 0 ? ` style="${parts.join('; ')}"` : '';
+  if (!props) return noop;
+
+  const blockParts: string[] = [];
+  const inlineParts: string[] = [];
+  for (const [key, value] of Object.entries(props)) {
+    if (BLOCK_PROPS.has(key)) {
+      blockParts.push(`${key}: ${value}`);
+    } else if (value) {
+      inlineParts.push(`${key}: ${value}`);
+    }
+  }
+
+  const blockAttr = blockParts.length > 0 ? ` style="${blockParts.join('; ')}"` : '';
+  const inlineWrap = inlineParts.length > 0
+    ? (html: string) => `<span style="${inlineParts.join('; ')}">${html}</span>`
+    : (html: string) => html;
+
+  return { blockAttr, inlineWrap };
 }
 
 function renderContentNode(node: ContentNode, styleMap: Map<string, Record<string, string>>): string {
@@ -99,16 +116,16 @@ function renderContentNode(node: ContentNode, styleMap: Map<string, Record<strin
     case 'Heading': {
       const tag = `h${node.level}`;
       const idAttr = node.id != null ? ` data-block-id="${escapeHtml(node.id)}"` : '';
-      const style = blockStyleAttr(node.id, styleMap);
-      const inner = renderInlineNodes(node.children, styleMap);
-      return `<${tag}${idAttr}${style}>${inner}</${tag}>`;
+      const { blockAttr, inlineWrap } = blockStyles(node.id, styleMap);
+      const inner = inlineWrap(renderInlineNodes(node.children, styleMap));
+      return `<${tag}${idAttr}${blockAttr}>${inner}</${tag}>`;
     }
 
     case 'Paragraph': {
       const idAttr = node.id != null ? ` data-block-id="${escapeHtml(node.id)}"` : '';
-      const style = blockStyleAttr(node.id, styleMap);
-      const inner = renderInlineNodes(node.children, styleMap);
-      return `<p${idAttr}${style}>${inner}</p>`;
+      const { blockAttr, inlineWrap } = blockStyles(node.id, styleMap);
+      const inner = inlineWrap(renderInlineNodes(node.children, styleMap));
+      return `<p${idAttr}${blockAttr}>${inner}</p>`;
     }
 
     case 'Image': {

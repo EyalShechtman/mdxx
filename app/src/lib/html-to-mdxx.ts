@@ -120,6 +120,29 @@ function blockIdSuffix(el: HTMLElement, ctx: SerializationContext): string {
   return '';
 }
 
+/**
+ * When a block's entire content is a single styled span, merge block-level
+ * props (text-align) and inline props (font/size/color) into one block ID.
+ * Returns null if the content has multiple children or mixed styles.
+ */
+function tryMergeBlockInline(el: HTMLElement, ctx: SerializationContext): { text: string; id: string } | null {
+  const blockProps = extractBlockStyleProps(el);
+  const children = el.childNodes;
+
+  // Only merge when there's exactly one child and it's a styled span
+  if (children.length !== 1 || children[0].nodeType !== Node.ELEMENT_NODE) return null;
+  const child = children[0] as HTMLElement;
+  if (child.tagName?.toLowerCase() !== 'span' || child.getAttribute('data-comment-id')) return null;
+
+  const { props: inlineProps, innerEl } = collectSpanStyles(child);
+  const merged = { ...inlineProps, ...blockProps };
+  if (Object.keys(merged).length === 0) return null;
+
+  const text = inlineContent(innerEl, ctx);
+  const id = ctx.getStyleId(merged);
+  return { text, id };
+}
+
 function serializeNode(node: ChildNode, ctx: SerializationContext): string {
   if (node.nodeType === Node.TEXT_NODE) {
     return node.textContent ?? '';
@@ -128,74 +151,94 @@ function serializeNode(node: ChildNode, ctx: SerializationContext): string {
   if (node.nodeType !== Node.ELEMENT_NODE) return '';
   const el = node as HTMLElement;
   const tag = el.tagName.toLowerCase();
-  const idSuffix = blockIdSuffix(el, ctx);
 
   switch (tag) {
-    case 'h1': return `# ${inlineContent(el, ctx)}${idSuffix}\n\n`;
-    case 'h2': return `## ${inlineContent(el, ctx)}${idSuffix}\n\n`;
-    case 'h3': return `### ${inlineContent(el, ctx)}${idSuffix}\n\n`;
-    case 'h4': return `#### ${inlineContent(el, ctx)}${idSuffix}\n\n`;
+    case 'h1': case 'h2': case 'h3': case 'h4': {
+      const prefix = '#'.repeat(parseInt(tag[1]));
+      const merged = tryMergeBlockInline(el, ctx);
+      if (merged) return `${prefix} ${merged.text} ~${merged.id}\n\n`;
+      return `${prefix} ${inlineContent(el, ctx)}${blockIdSuffix(el, ctx)}\n\n`;
+    }
 
     case 'p': {
+      const merged = tryMergeBlockInline(el, ctx);
+      if (merged) {
+        if (!merged.text.trim()) return '\n';
+        return `${merged.text} ~${merged.id}\n\n`;
+      }
       const text = inlineContent(el, ctx);
       if (!text.trim()) return '\n';
-      return `${text}${idSuffix}\n\n`;
+      return `${text}${blockIdSuffix(el, ctx)}\n\n`;
     }
 
     case 'blockquote': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? ` ~${blockId}` : '';
       const inner = serializeNodes(el.childNodes, ctx)
         .trim()
         .split('\n')
         .map(line => `> ${line}`)
         .join('\n');
-      return `${inner}\n${idSuffix ? idSuffix.trim() + '\n' : ''}\n`;
+      return `${inner}\n${suffix ? suffix.trim() + '\n' : ''}\n`;
     }
 
     case 'ul': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? `\n~${blockId}` : '';
       if (el.getAttribute('data-type') === 'taskList') {
         const items = Array.from(el.children).map(li => {
           const checked = li.getAttribute('data-checked') === 'true';
           const content = inlineContent(li.querySelector('div, p') ?? li, ctx);
           return `- [${checked ? 'x' : ' '}] ${content}`;
         });
-        return items.join('\n') + (idSuffix ? `\n${idSuffix.trim()}` : '') + '\n\n';
+        return items.join('\n') + suffix + '\n\n';
       }
       const items = Array.from(el.children).map(li => {
         return `- ${inlineContent(li.querySelector('p') ?? li, ctx)}`;
       });
-      return items.join('\n') + (idSuffix ? `\n${idSuffix.trim()}` : '') + '\n\n';
+      return items.join('\n') + suffix + '\n\n';
     }
 
     case 'ol': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? `\n~${blockId}` : '';
       const items = Array.from(el.children).map((li, i) => {
         return `${i + 1}. ${inlineContent(li.querySelector('p') ?? li, ctx)}`;
       });
-      return items.join('\n') + (idSuffix ? `\n${idSuffix.trim()}` : '') + '\n\n';
+      return items.join('\n') + suffix + '\n\n';
     }
 
     case 'pre': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? `\n~${blockId}` : '';
       const code = el.querySelector('code');
       const lang = code?.className?.match(/language-(\w+)/)?.[1] ?? '';
       const content = code?.textContent ?? el.textContent ?? '';
-      return `\`\`\`${lang}\n${content}\n\`\`\`${idSuffix ? `\n${idSuffix.trim()}` : ''}\n\n`;
+      return `\`\`\`${lang}\n${content}\n\`\`\`${suffix}\n\n`;
     }
 
     case 'table': {
-      return serializeTable(el, ctx) + (idSuffix ? `${idSuffix.trim()}\n` : '') + '\n';
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? `~${blockId}\n` : '';
+      return serializeTable(el, ctx) + suffix + '\n';
     }
 
     case 'img': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? ` ~${blockId}` : '';
       const alt = el.getAttribute('alt') ?? '';
       const src = el.getAttribute('src') ?? '';
-      return `![${alt}](${src})${idSuffix}\n\n`;
+      return `![${alt}](${src})${suffix}\n\n`;
     }
 
     case 'figure': {
+      const blockId = el.getAttribute('data-block-id');
+      const suffix = blockId ? ` ~${blockId}` : '';
       const img = el.querySelector('img');
       if (img) {
         const alt = img.getAttribute('alt') ?? '';
         const src = img.getAttribute('src') ?? '';
-        return `![${alt}](${src})${idSuffix}\n\n`;
+        return `![${alt}](${src})${suffix}\n\n`;
       }
       return '';
     }
